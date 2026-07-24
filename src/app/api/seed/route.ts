@@ -101,7 +101,7 @@ export async function GET() {
           const { data: prof } = await adminClient.from("profiles").select("id").eq("email", demo.email).maybeSingle();
           if (prof?.id) {
             userId = prof.id;
-            await adminClient.auth.admin.updateUserById(userId, {
+            await adminClient.auth.admin.updateUserById(userId!, {
               password: demo.pass,
               email_confirm: true,
               user_metadata: { full_name: demo.name, role: demo.role },
