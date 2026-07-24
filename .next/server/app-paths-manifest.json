@@ -1,0 +1,9 @@
+{
+  "/responder/page": "app/responder/page.js",
+  "/profile/settings/page": "app/profile/settings/page.js",
+  "/login/page": "app/login/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/responder/performance/page": "app/responder/performance/page.js",
+  "/page": "app/page.js",
+  "/admin/page": "app/admin/page.js"
+}
