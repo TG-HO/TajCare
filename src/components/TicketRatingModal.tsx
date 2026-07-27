@@ -138,11 +138,16 @@ export default function TicketRatingModal({
           </form>
         ) : (
           <form onSubmit={handleReopenSubmit} className="space-y-4 pt-4">
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
-              <p className="font-bold mb-0.5">72-Hour Re-Open Rule:</p>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-2">
+              <p className="font-bold">Re-Open Complaint</p>
               <p className="text-[11px] leading-relaxed">
-                You are re-opening this complaint because the issue persisted. This will return the ticket status to <strong>Pending</strong> and notify your assigned responder.
+                This will return the ticket to <strong>Reopened</strong> status and notify the IT Responder to re-attend. The responder&apos;s earned points will revert to <strong>Pending</strong> until you close and rate again.
               </p>
+              {ticket.status === "Closed" && (
+                <p className="text-[11px] leading-relaxed font-semibold text-amber-800">
+                  ⚠️ Post-Closure: You are reopening within the 72-hour grace window. Any confirmed points will be reverted to Pending.
+                </p>
+              )}
             </div>
 
             <div>

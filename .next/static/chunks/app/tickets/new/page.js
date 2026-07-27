@@ -270,6 +270,7 @@ eval(__webpack_require__.ts("\nObject.defineProperty(exports, \"__esModule\", ({
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   createTicketAction: function() { return /* binding */ createTicketAction; },
+/* harmony export */   permanentlyCloseExpiredTicketsAction: function() { return /* binding */ permanentlyCloseExpiredTicketsAction; },
 /* harmony export */   rateAndCloseTicketAction: function() { return /* binding */ rateAndCloseTicketAction; },
 /* harmony export */   reopenTicketAction: function() { return /* binding */ reopenTicketAction; }
 /* harmony export */ });
@@ -283,10 +284,11 @@ function __build_action__(action, args) {
   return (0,next_dist_client_app_call_server__WEBPACK_IMPORTED_MODULE_0__.callServer)(action.$$id, args)
 }
 
-/* __next_internal_action_entry_do_not_use__ {"7ece86d17ad471b75cba77ca618cc9c88346c6ef":"createTicketAction","a7d1f2fd4499ac202f73786256761923ada70168":"reopenTicketAction","b0536fe53423e4281084c5356fadf0429fae2c61":"rateAndCloseTicketAction"} */ var reopenTicketAction = (0,private_next_rsc_action_client_wrapper__WEBPACK_IMPORTED_MODULE_1__.createServerReference)("a7d1f2fd4499ac202f73786256761923ada70168");
+/* __next_internal_action_entry_do_not_use__ {"7ece86d17ad471b75cba77ca618cc9c88346c6ef":"createTicketAction","a7d1f2fd4499ac202f73786256761923ada70168":"reopenTicketAction","b0536fe53423e4281084c5356fadf0429fae2c61":"rateAndCloseTicketAction","c84245ab2c73d68c17a9de269acbf06f2c1a99f9":"permanentlyCloseExpiredTicketsAction"} */ var permanentlyCloseExpiredTicketsAction = (0,private_next_rsc_action_client_wrapper__WEBPACK_IMPORTED_MODULE_1__.createServerReference)("c84245ab2c73d68c17a9de269acbf06f2c1a99f9");
 
 var createTicketAction = (0,private_next_rsc_action_client_wrapper__WEBPACK_IMPORTED_MODULE_1__.createServerReference)("7ece86d17ad471b75cba77ca618cc9c88346c6ef");
 var rateAndCloseTicketAction = (0,private_next_rsc_action_client_wrapper__WEBPACK_IMPORTED_MODULE_1__.createServerReference)("b0536fe53423e4281084c5356fadf0429fae2c61");
+var reopenTicketAction = (0,private_next_rsc_action_client_wrapper__WEBPACK_IMPORTED_MODULE_1__.createServerReference)("a7d1f2fd4499ac202f73786256761923ada70168");
 
 
 

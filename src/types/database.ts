@@ -1,7 +1,15 @@
 export type Role = 'employee' | 'site_manager' | 'responder' | 'admin';
 export type LocationType = 'head_office' | 'fueling_site';
 export type Complexity = 'Low' | 'Medium' | 'High' | 'Critical';
-export type TicketStatus = 'Pending' | 'In Progress' | 'Visit Date Scheduled' | 'Visited' | 'Issue Resolved' | 'Closed';
+export type TicketStatus =
+  | 'Pending'
+  | 'In Progress'
+  | 'Visit Date Scheduled'
+  | 'Visited'
+  | 'Issue Resolved'
+  | 'Closed'
+  | 'Reopened'
+  | 'Permanently Closed';
 
 export interface Location {
   id: string;
@@ -74,10 +82,17 @@ export interface Ticket {
   visit_remarks?: string | null;
   closure_rating?: number | null;
   closure_remarks?: string | null;
+  /** Legacy column — kept in sync with confirmed_points on close */
   points_awarded?: number;
+  /** Points set when responder marks Issue Resolved. Awaiting SM confirmation. */
+  points_pending?: number;
+  /** Points confirmed only after Site Manager closes and rates the ticket. */
+  confirmed_points?: number;
   sla_due_at?: string;
   sla_breached?: boolean;
   reopened_count?: number;
+  /** Timestamp of closure — used for 3-day grace window calculation. */
+  closed_at?: string | null;
   created_at?: string;
   updated_at?: string;
   // Joined relations
@@ -86,4 +101,18 @@ export interface Ticket {
   issue_type?: PredefinedIssue | null;
   assigned_responder?: Profile | null;
   ticket_logs?: TicketLog[];
+}
+
+export interface ResponderMonthlyPoints {
+  id: string;
+  responder_id: string;
+  month: number;
+  year: number;
+  pending_points: number;
+  confirmed_points: number;
+  closed_complaints: number;
+  created_at?: string;
+  updated_at?: string;
+  // Joined
+  responder?: Profile | null;
 }

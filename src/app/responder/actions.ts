@@ -29,7 +29,7 @@ export async function updateTicketStatusAction(
 
   const { data: ticket } = await adminClient
     .from("tickets")
-    .select("status, scheduled_visit_date, sla_breached, location:locations(type)")
+    .select("status, scheduled_visit_date, sla_breached, location:locations(type), issue_type_id, points_pending")
     .eq("id", ticketId)
     .single();
 
@@ -48,7 +48,6 @@ export async function updateTicketStatusAction(
       const scheduledTime = new Date(ticket.scheduled_visit_date).getTime();
       const currentTime = Date.now();
       if (currentTime > scheduledTime) {
-        // Scheduled visit date has passed without being visited -> SLA breach / late penalty applies!
         isLateBreach = true;
       }
     }
@@ -56,8 +55,40 @@ export async function updateTicketStatusAction(
 
   const targetStatus = newStatus === "Rescheduled" ? "Visit Date Scheduled" : newStatus;
 
-  // Build update payload
-  const updateData: any = {
+  // --- ISSUE RESOLVED: Use the dedicated RPC for atomic pending points ---
+  if (targetStatus === "Issue Resolved") {
+    const { data: rpcResult, error: rpcError } = await adminClient.rpc(
+      "fn_mark_issue_resolved",
+      {
+        p_ticket_id: ticketId,
+        p_actor_id: user.id,
+        p_remarks: remarks,
+        p_visit_date: visitDate ? new Date(visitDate).toISOString() : null,
+      }
+    );
+
+    if (rpcError) {
+      return { error: rpcError.message };
+    }
+
+    const result = rpcResult as { error?: string; success?: boolean; pending_points?: number };
+    if (result?.error) {
+      return { error: result.error };
+    }
+
+    revalidatePath("/responder");
+    revalidatePath("/dashboard");
+    revalidatePath("/admin");
+    revalidatePath("/admin/tickets");
+
+    return {
+      success: true,
+      message: `Ticket marked as Resolved! ${result?.pending_points || 0} pts are now Pending — will be confirmed once Site Manager closes and rates the ticket.`,
+    };
+  }
+
+  // --- ALL OTHER STATUS TRANSITIONS ---
+  const updateData: Record<string, unknown> = {
     status: targetStatus,
     updated_at: new Date().toISOString(),
   };

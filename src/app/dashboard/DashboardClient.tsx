@@ -1,12 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Ticket, Profile } from "@/types/database";
 import { getStatusBadgeColor, formatDate } from "@/lib/utils";
-import { Ticket as TicketIcon, Plus, Clock, CheckCircle2, RotateCcw, Eye, MapPin, User, Star, Award, AlertTriangle } from "lucide-react";
+import {
+  Ticket as TicketIcon,
+  Plus,
+  Clock,
+  CheckCircle2,
+  RotateCcw,
+  Eye,
+  Star,
+  Lock,
+  Hourglass,
+  BadgeCheck,
+  AlertTriangle,
+} from "lucide-react";
 import Link from "next/link";
 import TicketRatingModal from "@/components/TicketRatingModal";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
+import { permanentlyCloseExpiredTicketsAction } from "@/app/tickets/actions";
 
 export default function DashboardClient({
   profile,
@@ -20,16 +33,52 @@ export default function DashboardClient({
   const [modalMode, setModalMode] = useState<"rate" | "reopen" | null>(null);
   const [drawerTicket, setDrawerTicket] = useState<Ticket | null>(null);
 
-  const activeTickets = tickets.filter((t) => t.status !== "Closed");
-  const completedTickets = tickets.filter((t) => t.status === "Closed");
+  // On mount: auto-expire any Closed tickets that are past the 72h window
+  useEffect(() => {
+    const expiredIds = tickets
+      .filter((t) => {
+        if (t.status !== "Closed" || !t.closed_at) return false;
+        const hoursElapsed = (Date.now() - new Date(t.closed_at).getTime()) / (1000 * 60 * 60);
+        return hoursElapsed > 72;
+      })
+      .map((t) => t.id);
+
+    if (expiredIds.length > 0) {
+      permanentlyCloseExpiredTicketsAction(expiredIds).catch(console.error);
+    }
+  }, [tickets]);
+
+  const activeTickets = tickets.filter(
+    (t) => t.status !== "Closed" && t.status !== "Permanently Closed"
+  );
+  const completedTickets = tickets.filter(
+    (t) => t.status === "Closed" || t.status === "Permanently Closed"
+  );
 
   const displayList = activeTab === "active" ? activeTickets : completedTickets;
 
+  /** Reopen available on Issue Resolved (no time limit) OR Closed (within 72h of closed_at) */
   function canReopen(ticket: Ticket) {
-    if (ticket.status !== "Issue Resolved" && ticket.status !== "Visited") return false;
-    const resolvedAt = new Date(ticket.updated_at || ticket.created_at || "").getTime();
-    const hoursElapsed = (Date.now() - resolvedAt) / (1000 * 60 * 60);
-    return hoursElapsed <= 72;
+    if (ticket.status === "Issue Resolved" || ticket.status === "Reopened") return true;
+    if (ticket.status === "Closed" && ticket.closed_at) {
+      const hoursElapsed = (Date.now() - new Date(ticket.closed_at).getTime()) / (1000 * 60 * 60);
+      return hoursElapsed <= 72;
+    }
+    return false;
+  }
+
+  /** Close & Rate only available when responder has explicitly marked Issue Resolved */
+  function canRate(ticket: Ticket) {
+    return ticket.status === "Issue Resolved";
+  }
+
+  /** Remaining hours in the 72h reopen window for Closed tickets */
+  function getReopenWindowHours(ticket: Ticket): number | null {
+    if (ticket.status === "Closed" && ticket.closed_at) {
+      const hoursElapsed = (Date.now() - new Date(ticket.closed_at).getTime()) / (1000 * 60 * 60);
+      return Math.max(0, 72 - hoursElapsed);
+    }
+    return null;
   }
 
   return (
@@ -99,27 +148,29 @@ export default function DashboardClient({
           displayList.map((ticket) => {
             const title =
               ticket.issue_type?.issue_title || ticket.custom_issue_title || "General IT Complaint";
-            
-            const isVisitPassed = ticket.scheduled_visit_date ? new Date() >= new Date(ticket.scheduled_visit_date) : false;
-            const isSiteManager = profile?.role === "site_manager";
-            
-            // Show rating/close button for:
-            // - Issue Resolved or Visited tickets (all roles)
-            // - Visit Date Scheduled tickets when visit date has passed (site managers & employees)
-            const showRatingButton =
-              ticket.status === "Issue Resolved" ||
-              ticket.status === "Visited" ||
-              (ticket.status === "Visit Date Scheduled" && isVisitPassed);
 
+            const isVisitPassed = ticket.scheduled_visit_date
+              ? new Date() >= new Date(ticket.scheduled_visit_date)
+              : false;
+
+            const showRatingButton = canRate(ticket);
             const showReopenButton = canReopen(ticket);
+            const reopenWindowHours = getReopenWindowHours(ticket);
+            const isPermanentlyClosed = ticket.status === "Permanently Closed";
 
             return (
               <div
                 key={ticket.id}
-                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all space-y-4"
+                className={`bg-white border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all space-y-4 ${
+                  ticket.status === "Reopened"
+                    ? "border-rose-200"
+                    : isPermanentlyClosed
+                    ? "border-slate-300 opacity-80"
+                    : "border-slate-200"
+                }`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center flex-wrap gap-2">
                     <span className="text-xs font-extrabold text-[#0F172A]">
                       #{ticket.ticket_number}
                     </span>
@@ -128,18 +179,50 @@ export default function DashboardClient({
                         ticket.status
                       )}`}
                     >
+                      {ticket.status === "Permanently Closed" && (
+                        <Lock className="w-2.5 h-2.5 mr-1" />
+                      )}
                       {ticket.status}
                     </span>
+
                     {ticket.reopened_count && ticket.reopened_count > 0 ? (
                       <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                         Re-opened ({ticket.reopened_count}x)
                       </span>
                     ) : null}
-                    {isVisitPassed && ticket.status !== "Closed" && ticket.status !== "Issue Resolved" && (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Visit Date Reached - Ready to Close
+
+                    {/* Pending points badge — shown when awaiting SM confirmation */}
+                    {ticket.status === "Issue Resolved" && (ticket.points_pending ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
+                        <Hourglass className="w-2.5 h-2.5" />
+                        {ticket.points_pending} pts Pending
                       </span>
                     )}
+
+                    {/* Confirmed points badge */}
+                    {(ticket.status === "Closed" || isPermanentlyClosed) &&
+                      (ticket.confirmed_points ?? 0) > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300">
+                          <BadgeCheck className="w-2.5 h-2.5" />
+                          {ticket.confirmed_points} pts Confirmed
+                        </span>
+                      )}
+
+                    {/* Post-closure reopen window badge */}
+                    {ticket.status === "Closed" && reopenWindowHours !== null && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                        Reopen window: {Math.round(reopenWindowHours)}h left
+                      </span>
+                    )}
+
+                    {isVisitPassed &&
+                      ticket.status !== "Closed" &&
+                      ticket.status !== "Permanently Closed" &&
+                      ticket.status !== "Issue Resolved" && (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Visit Date Reached
+                        </span>
+                      )}
                   </div>
 
                   <span className="text-[11px] text-slate-400">
@@ -152,10 +235,29 @@ export default function DashboardClient({
                     <h3 className="font-bold text-[#0F172A] text-base">{title}</h3>
                     <p className="text-xs text-slate-600 line-clamp-2">{ticket.description}</p>
                     {ticket.scheduled_visit_date && (
-                      <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                        isVisitPassed ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
-                      }`}>
-                        <Clock className="w-3.5 h-3.5" /> Scheduled Visit: {formatDate(ticket.scheduled_visit_date)}
+                      <div
+                        className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                          isVisitPassed
+                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                            : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                        }`}
+                      >
+                        <Clock className="w-3.5 h-3.5" /> Scheduled Visit:{" "}
+                        {formatDate(ticket.scheduled_visit_date)}
+                      </div>
+                    )}
+
+                    {/* Permanently closed note */}
+                    {isPermanentlyClosed && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                        <Lock className="w-3 h-3" /> Ticket permanently locked — re-open window expired.
+                      </div>
+                    )}
+
+                    {/* Awaiting confirmation notice */}
+                    {ticket.status === "Issue Resolved" && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                        <AlertTriangle className="w-3 h-3" /> Awaiting your confirmation — close and rate to confirm points.
                       </div>
                     )}
                   </div>
@@ -182,7 +284,7 @@ export default function DashboardClient({
                       </button>
                     )}
 
-                    {showReopenButton && (
+                    {showReopenButton && !isPermanentlyClosed && (
                       <button
                         onClick={() => {
                           setSelectedTicket(ticket);
@@ -191,7 +293,9 @@ export default function DashboardClient({
                         className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
                       >
                         <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-                        Re-Open Ticket (72h)
+                        {ticket.status === "Closed"
+                          ? `Re-Open (${Math.round(reopenWindowHours ?? 0)}h left)`
+                          : "Re-Open Ticket"}
                       </button>
                     )}
                   </div>

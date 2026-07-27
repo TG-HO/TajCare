@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -123,7 +124,7 @@ export async function createTicketAction(formData: FormData) {
     }
   }
 
-  // Insert ticket
+  // Insert ticket — points_pending and confirmed_points both start at 0
   const { data: ticket, error } = await supabase
     .from("tickets")
     .insert({
@@ -135,7 +136,7 @@ export async function createTicketAction(formData: FormData) {
       status: "Pending",
       assigned_responder_id: assignedResponderId,
       sla_due_at: slaDueAt,
-      points_awarded: basePoints,
+      points_awarded: basePoints,   // legacy column: store base for reference
     })
     .select()
     .single();
@@ -161,6 +162,10 @@ export async function createTicketAction(formData: FormData) {
   };
 }
 
+/**
+ * Site Manager rates and closes a ticket.
+ * Points are confirmed ONLY here via the atomic RPC.
+ */
 export async function rateAndCloseTicketAction(
   ticketId: string,
   rating: number,
@@ -177,9 +182,11 @@ export async function rateAndCloseTicketAction(
 
   if (!user) return { error: "Unauthorized" };
 
-  const { data: ticket } = await supabase
+  const adminClient = createAdminClient();
+
+  const { data: ticket } = await adminClient
     .from("tickets")
-    .select("status, points_awarded, sla_breached, scheduled_visit_date")
+    .select("status, points_pending, sla_breached, scheduled_visit_date")
     .eq("id", ticketId)
     .single();
 
@@ -187,74 +194,52 @@ export async function rateAndCloseTicketAction(
     return { error: "Ticket not found." };
   }
 
-  // Allow closing "Issue Resolved" OR "Visit Date Scheduled" when visit date has passed OR "Visited"
-  const visitPassed = ticket.scheduled_visit_date
-    ? new Date() >= new Date(ticket.scheduled_visit_date)
-    : false;
-
-  const canClose =
-    ticket.status === "Issue Resolved" ||
-    ticket.status === "Visited" ||
-    (ticket.status === "Visit Date Scheduled" && visitPassed);
-
-  if (!canClose) {
+  // Only allow closing tickets that the responder has explicitly marked as resolved
+  if (ticket.status !== "Issue Resolved" && ticket.status !== "Reopened") {
     return {
       error:
-        ticket.status === "Visit Date Scheduled"
-          ? "Cannot close yet — the scheduled visit date has not passed."
-          : "Only resolved or visited tickets can be closed and rated.",
+        "This ticket cannot be closed yet. The IT Responder must first mark it as 'Issue Resolved' before you can rate and close it.",
     };
   }
 
-  // Formula: Total Points = (Base Points * Rating Multiplier) - SLA Penalty
-  const basePoints = ticket.points_awarded || 20;
-  const ratingMultipliers: Record<number, number> = {
-    5: 1.5,
-    4: 1.25,
-    3: 1.0,
-    2: 0.8,
-    1: 0.5,
-  };
+  // Call the atomic RPC — handles points confirmation + monthly snapshot + ticket log
+  const { data: rpcResult, error: rpcError } = await adminClient.rpc(
+    "fn_close_ticket_and_confirm_points",
+    {
+      p_ticket_id: ticketId,
+      p_actor_id: user.id,
+      p_rating: rating,
+      p_remarks: remarks || "",
+    }
+  );
 
-  const multiplier = ratingMultipliers[rating] || 1.0;
-  const slaPenalty = ticket.sla_breached ? 15 : 0;
-  const finalPoints = Math.max(0, Math.round(basePoints * multiplier - slaPenalty));
-
-  // Update status to Closed & set final awarded points
-  const { error } = await supabase
-    .from("tickets")
-    .update({
-      status: "Closed",
-      closure_rating: rating,
-      closure_remarks: remarks || null,
-      points_awarded: finalPoints,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", ticketId);
-
-  if (error) {
-    return { error: error.message };
+  if (rpcError) {
+    return { error: rpcError.message };
   }
 
-  // Log action
-  await supabase.from("ticket_logs").insert({
-    ticket_id: ticketId,
-    actor_id: user.id,
-    previous_status: ticket.status,
-    new_status: "Closed",
-    remarks: `Ticket closed with ${rating}-Star rating. Final Points Awarded: ${finalPoints} pts. Remarks: ${
-      remarks || "No remarks"
-    }`,
-  });
+  const result = rpcResult as { error?: string; success?: boolean; confirmed_points?: number };
+  if (result?.error) {
+    return { error: result.error };
+  }
 
   revalidatePath("/dashboard");
   revalidatePath("/leaderboard");
+  revalidatePath("/responder");
+  revalidatePath("/responder/performance");
+
   return {
     success: true,
-    message: `Ticket closed! Awarded ${finalPoints} points to responder based on your rating.`,
+    message: `Ticket closed! ${result?.confirmed_points || 0} points confirmed and credited to the responder.`,
   };
 }
 
+/**
+ * Site Manager reopens a ticket.
+ * Works for:
+ *  - "Issue Resolved" status (pre-close reopen, no 72h restriction)
+ *  - "Closed" status (post-close reopen, within 72h of closed_at)
+ * Reverts confirmed_points to 0; restores pending points.
+ */
 export async function reopenTicketAction(ticketId: string, remarks: string) {
   if (!remarks) {
     return { error: "Please provide a reason for re-opening the ticket." };
@@ -267,49 +252,91 @@ export async function reopenTicketAction(ticketId: string, remarks: string) {
 
   if (!user) return { error: "Unauthorized" };
 
-  const { data: ticket } = await supabase
+  const adminClient = createAdminClient();
+
+  const { data: ticket } = await adminClient
     .from("tickets")
-    .select("status, updated_at, reopened_count")
+    .select("status, closed_at, reopened_count")
     .eq("id", ticketId)
     .single();
 
-  if (!ticket || (ticket.status !== "Issue Resolved" && ticket.status !== "Visited")) {
-    return { error: "Only resolved or visited tickets can be re-opened." };
+  if (!ticket) {
+    return { error: "Ticket not found." };
   }
 
-  // Verify 72 hour rule
-  const resolvedAt = new Date(ticket.updated_at).getTime();
-  const now = Date.now();
-  const hoursElapsed = (now - resolvedAt) / (1000 * 60 * 60);
-
-  if (hoursElapsed > 72) {
-    return { error: "Re-open window expired (72 hours elapsed since resolution)." };
+  if (ticket.status !== "Issue Resolved" && ticket.status !== "Closed") {
+    return {
+      error: `Only tickets in "Issue Resolved" or "Closed" status can be re-opened. Current status: ${ticket.status}`,
+    };
   }
 
-  // Re-open ticket -> set back to Pending
-  const newReopenedCount = (ticket.reopened_count || 0) + 1;
-  const { error } = await supabase
-    .from("tickets")
-    .update({
-      status: "Pending",
-      reopened_count: newReopenedCount,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", ticketId);
-
-  if (error) {
-    return { error: error.message };
+  if (ticket.status === "Closed") {
+    if (!ticket.closed_at) {
+      return { error: "Closure timestamp missing. Cannot verify re-open window." };
+    }
+    const hoursElapsed = (Date.now() - new Date(ticket.closed_at).getTime()) / (1000 * 60 * 60);
+    if (hoursElapsed > 72) {
+      return {
+        error: "Re-open window has expired. Tickets can only be re-opened within 72 hours of closure.",
+      };
+    }
   }
 
-  // Log action
-  await supabase.from("ticket_logs").insert({
-    ticket_id: ticketId,
-    actor_id: user.id,
-    previous_status: "Issue Resolved",
-    new_status: "Pending",
-    remarks: `Re-opened by complainant (${newReopenedCount}x). Reason: ${remarks}`,
-  });
+  // Call the atomic RPC — handles point reversion + monthly snapshot update + log
+  const { data: rpcResult, error: rpcError } = await adminClient.rpc(
+    "fn_reopen_ticket",
+    {
+      p_ticket_id: ticketId,
+      p_actor_id: user.id,
+      p_remarks: remarks,
+    }
+  );
+
+  if (rpcError) {
+    return { error: rpcError.message };
+  }
+
+  const result = rpcResult as { error?: string; success?: boolean; reopened_count?: number };
+  if (result?.error) {
+    return { error: result.error };
+  }
 
   revalidatePath("/dashboard");
-  return { success: true, message: "Ticket re-opened and returned to responder queue." };
+  revalidatePath("/responder");
+  revalidatePath("/responder/performance");
+
+  return {
+    success: true,
+    message: "Ticket re-opened. The responder's points have been reverted to Pending and the complaint is back in their queue.",
+  };
+}
+
+/**
+ * Auto-expire closed tickets that have surpassed the 72-hour re-open window.
+ * Called server-side on dashboard render.
+ */
+export async function permanentlyCloseExpiredTicketsAction(ticketIds: string[]) {
+  if (!ticketIds || ticketIds.length === 0) return { success: true };
+
+  const adminClient = createAdminClient();
+
+  // Batch permanently close all expired tickets
+  const results = await Promise.allSettled(
+    ticketIds.map((id) =>
+      adminClient.rpc("fn_permanently_close_ticket", { p_ticket_id: id })
+    )
+  );
+
+  const errors = results
+    .filter((r) => r.status === "rejected")
+    .map((r) => (r as PromiseRejectedResult).reason?.message);
+
+  if (errors.length > 0) {
+    console.error("Failed to permanently close some tickets:", errors);
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/responder");
+
+  return { success: true };
 }

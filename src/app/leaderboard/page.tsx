@@ -1,13 +1,29 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { Trophy, Award, Star, ShieldCheck, CheckCircle2, AlertTriangle, ArrowLeft, Fuel } from "lucide-react";
+import {
+  Trophy,
+  Award,
+  Star,
+  ShieldCheck,
+  ArrowLeft,
+  Fuel,
+  Hourglass,
+  BadgeCheck,
+  CalendarDays,
+} from "lucide-react";
 import Link from "next/link";
+
+const MONTH_NAMES = [
+  "", "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 interface LeaderboardEntry {
   responder_id: string;
   full_name: string;
   email: string;
-  total_points: number;
+  confirmed_points: number;
+  pending_points: number;
   avg_rating: number;
   total_resolved: number;
   total_assigned: number;
@@ -16,7 +32,11 @@ interface LeaderboardEntry {
   bound_locations_count: number;
 }
 
-export default async function LeaderboardPage() {
+export default async function LeaderboardPage({
+  searchParams,
+}: {
+  searchParams: { month?: string; year?: string; view?: string };
+}) {
   const supabase = await createClient();
 
   const {
@@ -25,16 +45,38 @@ export default async function LeaderboardPage() {
 
   if (!user) redirect("/login");
 
+  const now = new Date();
+  const defaultMonth = now.getMonth() + 1;
+  const defaultYear = now.getFullYear();
+
+  const selectedMonth = parseInt(searchParams.month || String(defaultMonth));
+  const selectedYear = parseInt(searchParams.year || String(defaultYear));
+  const viewMode = searchParams.view || "monthly"; // "monthly" | "alltime"
+
   // Fetch responder profiles
   const { data: responders } = await supabase
     .from("profiles")
     .select("*, responder_locations(location_id)")
     .eq("role", "responder");
 
-  // Fetch all tickets assigned to responders
-  const { data: tickets } = await supabase
+  // Fetch monthly points snapshot for selected period
+  const { data: monthlyPoints } = await supabase
+    .from("responder_monthly_points")
+    .select("*")
+    .eq("month", selectedMonth)
+    .eq("year", selectedYear);
+
+  // Fetch all-time tickets for SLA and rating data
+  const { data: allTickets } = await supabase
     .from("tickets")
-    .select("*, location:locations(name)");
+    .select("assigned_responder_id, status, closure_rating, sla_breached, confirmed_points, points_pending, closed_at");
+
+  // Filter tickets for selected month (for monthly view stats)
+  const monthlyTickets = (allTickets || []).filter((t) => {
+    if (!t.closed_at) return false;
+    const d = new Date(t.closed_at);
+    return d.getMonth() + 1 === selectedMonth && d.getFullYear() === selectedYear;
+  });
 
   const leaderboardMap = new Map<string, LeaderboardEntry>();
 
@@ -43,7 +85,8 @@ export default async function LeaderboardPage() {
       responder_id: resp.id,
       full_name: resp.full_name,
       email: resp.email,
-      total_points: 0,
+      confirmed_points: 0,
+      pending_points: 0,
       avg_rating: 0,
       total_resolved: 0,
       total_assigned: 0,
@@ -53,23 +96,63 @@ export default async function LeaderboardPage() {
     });
   });
 
-  const ratingsSumMap = new Map<string, number>();
-  const ratedCountMap = new Map<string, number>();
+  if (viewMode === "monthly") {
+    // Use monthly snapshot table for confirmed/pending points
+    (monthlyPoints || []).forEach((mp) => {
+      const entry = leaderboardMap.get(mp.responder_id);
+      if (!entry) return;
+      entry.confirmed_points = mp.confirmed_points || 0;
+      entry.pending_points = mp.pending_points || 0;
+      entry.total_resolved = mp.closed_complaints || 0;
+    });
 
-  (tickets || []).forEach((t) => {
-    if (!t.assigned_responder_id) return;
-    const entry = leaderboardMap.get(t.assigned_responder_id);
-    if (!entry) return;
+    // Augment with SLA and rating from monthly tickets
+    const ratingsSumMap = new Map<string, number>();
+    const ratedCountMap = new Map<string, number>();
 
-    entry.total_assigned += 1;
+    monthlyTickets.forEach((t) => {
+      if (!t.assigned_responder_id) return;
+      const entry = leaderboardMap.get(t.assigned_responder_id);
+      if (!entry) return;
+      if (t.sla_breached) entry.sla_breaches += 1;
+      entry.total_assigned += 1;
+      if (t.closure_rating) {
+        const sum = (ratingsSumMap.get(t.assigned_responder_id) || 0) + t.closure_rating;
+        const cnt = (ratedCountMap.get(t.assigned_responder_id) || 0) + 1;
+        ratingsSumMap.set(t.assigned_responder_id, sum);
+        ratedCountMap.set(t.assigned_responder_id, cnt);
+      }
+    });
 
-    if (t.sla_breached) {
-      entry.sla_breaches += 1;
-    }
+    leaderboardMap.forEach((entry) => {
+      const ratedCount = ratedCountMap.get(entry.responder_id) || 0;
+      const ratingSum = ratingsSumMap.get(entry.responder_id) || 0;
+      entry.avg_rating = ratedCount > 0 ? parseFloat((ratingSum / ratedCount).toFixed(1)) : 5.0;
+      entry.sla_compliance_rate =
+        entry.total_assigned > 0
+          ? Math.max(0, Math.round(((entry.total_assigned - entry.sla_breaches) / entry.total_assigned) * 100))
+          : 100;
+    });
+  } else {
+    // All-time: aggregate from tickets
+    const ratingsSumMap = new Map<string, number>();
+    const ratedCountMap = new Map<string, number>();
 
-    if (t.status === "Closed" || t.status === "Issue Resolved") {
-      entry.total_resolved += 1;
-      entry.total_points += t.points_awarded || 0;
+    (allTickets || []).forEach((t) => {
+      if (!t.assigned_responder_id) return;
+      const entry = leaderboardMap.get(t.assigned_responder_id);
+      if (!entry) return;
+
+      entry.total_assigned += 1;
+      if (t.sla_breached) entry.sla_breaches += 1;
+
+      if (t.status === "Closed" || t.status === "Permanently Closed") {
+        entry.total_resolved += 1;
+        entry.confirmed_points += t.confirmed_points || 0;
+      }
+      if (t.status === "Issue Resolved" || t.status === "Reopened") {
+        entry.pending_points += t.points_pending || 0;
+      }
 
       if (t.closure_rating) {
         const sum = (ratingsSumMap.get(t.assigned_responder_id) || 0) + t.closure_rating;
@@ -77,29 +160,34 @@ export default async function LeaderboardPage() {
         ratingsSumMap.set(t.assigned_responder_id, sum);
         ratedCountMap.set(t.assigned_responder_id, cnt);
       }
-    }
-  });
+    });
 
-  // Calculate averages and SLA rate
-  const leaderboardList: LeaderboardEntry[] = Array.from(leaderboardMap.values()).map((entry) => {
-    const ratedCount = ratedCountMap.get(entry.responder_id) || 0;
-    const ratingSum = ratingsSumMap.get(entry.responder_id) || 0;
-    const avgRating = ratedCount > 0 ? parseFloat((ratingSum / ratedCount).toFixed(1)) : 5.0;
+    leaderboardMap.forEach((entry) => {
+      const ratedCount = ratedCountMap.get(entry.responder_id) || 0;
+      const ratingSum = ratingsSumMap.get(entry.responder_id) || 0;
+      entry.avg_rating = ratedCount > 0 ? parseFloat((ratingSum / ratedCount).toFixed(1)) : 5.0;
+      entry.sla_compliance_rate =
+        entry.total_assigned > 0
+          ? Math.max(0, Math.round(((entry.total_assigned - entry.sla_breaches) / entry.total_assigned) * 100))
+          : 100;
+    });
+  }
 
-    const slaCompliance =
-      entry.total_assigned > 0
-        ? Math.max(0, Math.round(((entry.total_assigned - entry.sla_breaches) / entry.total_assigned) * 100))
-        : 100;
+  // Sort by confirmed points descending
+  const leaderboardList: LeaderboardEntry[] = Array.from(leaderboardMap.values()).sort(
+    (a, b) => b.confirmed_points - a.confirmed_points
+  );
 
-    return {
-      ...entry,
-      avg_rating: avgRating,
-      sla_compliance_rate: slaCompliance,
-    };
-  });
-
-  // Sort by points descending
-  leaderboardList.sort((a, b) => b.total_points - a.total_points);
+  // Generate month options for the selector (last 12 months)
+  const monthOptions: { label: string; month: number; year: number }[] = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(defaultYear, defaultMonth - 1 - i, 1);
+    monthOptions.push({
+      label: `${MONTH_NAMES[d.getMonth() + 1]} ${d.getFullYear()}`,
+      month: d.getMonth() + 1,
+      year: d.getFullYear(),
+    });
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -113,7 +201,7 @@ export default async function LeaderboardPage() {
             <h1 className="font-extrabold text-[#0F172A] text-base leading-tight">
               Taj Care Leaderboard
             </h1>
-            <p className="text-xs text-slate-500">Monthly IT Responder Performance Ranking</p>
+            <p className="text-xs text-slate-500">IT Responder Performance Rankings</p>
           </div>
         </div>
 
@@ -135,12 +223,63 @@ export default async function LeaderboardPage() {
               <Trophy className="w-4 h-4 text-amber-400" /> Gamification & SLA Leaderboard
             </div>
             <h1 className="text-2xl font-extrabold tracking-tight">
-              Monthly Responder Rankings
+              {viewMode === "monthly"
+                ? `${MONTH_NAMES[selectedMonth]} ${selectedYear} Rankings`
+                : "All-Time Rankings"}
             </h1>
             <p className="text-xs text-slate-300 mt-1 max-w-xl">
-              Responders earn points based on issue complexity and star ratings, adjusted by 24-hour SLA penalties.
+              Only <strong>confirmed points</strong> (from Site Manager–closed tickets) count toward the ranking. Pending points are shown separately.
             </p>
           </div>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-600">View:</span>
+            <Link
+              href={`/leaderboard?view=monthly&month=${selectedMonth}&year=${selectedYear}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === "monthly"
+                  ? "bg-[#0F172A] text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              <CalendarDays className="w-3.5 h-3.5 inline mr-1" />
+              Monthly
+            </Link>
+            <Link
+              href="/leaderboard?view=alltime"
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === "alltime"
+                  ? "bg-[#0F172A] text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              All Time
+            </Link>
+          </div>
+
+          {viewMode === "monthly" && (
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-xs font-semibold text-slate-600">Month:</span>
+              <div className="flex gap-1 flex-wrap">
+                {monthOptions.slice(0, 6).map((opt) => (
+                  <Link
+                    key={`${opt.month}-${opt.year}`}
+                    href={`/leaderboard?view=monthly&month=${opt.month}&year=${opt.year}`}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                      opt.month === selectedMonth && opt.year === selectedYear
+                        ? "bg-indigo-600 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {MONTH_NAMES[opt.month].slice(0, 3)} &apos;{String(opt.year).slice(2)}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Leaderboard Table */}
@@ -151,16 +290,25 @@ export default async function LeaderboardPage() {
                 <tr>
                   <th className="p-4">Rank</th>
                   <th className="p-4">Responder</th>
-                  <th className="p-4">Total Points</th>
+                  <th className="p-4">
+                    <span className="inline-flex items-center gap-1">
+                      <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" /> Confirmed Pts
+                    </span>
+                  </th>
+                  <th className="p-4">
+                    <span className="inline-flex items-center gap-1">
+                      <Hourglass className="w-3.5 h-3.5 text-amber-500" /> Pending Pts
+                    </span>
+                  </th>
                   <th className="p-4">CSAT Rating</th>
-                  <th className="p-4">Resolved Complaints</th>
+                  <th className="p-4">Resolved</th>
                   <th className="p-4">SLA Compliance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {leaderboardList.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">
+                    <td colSpan={7} className="p-8 text-center text-slate-400">
                       No active responders found.
                     </td>
                   </tr>
@@ -197,9 +345,7 @@ export default async function LeaderboardPage() {
                             </span>
                           )}
                           {rank > 3 && (
-                            <span className="font-bold text-slate-400 pl-3">
-                              #{rank}
-                            </span>
+                            <span className="font-bold text-slate-400 pl-3">#{rank}</span>
                           )}
                         </td>
 
@@ -216,10 +362,21 @@ export default async function LeaderboardPage() {
                         </td>
 
                         <td className="p-4">
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl font-extrabold text-sm">
-                            <Award className="w-4 h-4 text-amber-500" />
-                            {entry.total_points} Pts
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl font-extrabold text-sm">
+                            <BadgeCheck className="w-4 h-4 text-emerald-600" />
+                            {entry.confirmed_points} Pts
                           </div>
+                        </td>
+
+                        <td className="p-4">
+                          {entry.pending_points > 0 ? (
+                            <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-bold text-xs">
+                              <Hourglass className="w-3 h-3" />
+                              {entry.pending_points} pts
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-xs">—</span>
+                          )}
                         </td>
 
                         <td className="p-4">
@@ -230,7 +387,7 @@ export default async function LeaderboardPage() {
                         </td>
 
                         <td className="p-4 font-semibold text-slate-800">
-                          {entry.total_resolved} resolved
+                          {entry.total_resolved} closed
                         </td>
 
                         <td className="p-4">
@@ -250,6 +407,18 @@ export default async function LeaderboardPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap gap-4 text-xs text-slate-600">
+          <div className="flex items-center gap-1.5">
+            <BadgeCheck className="w-4 h-4 text-emerald-600" />
+            <strong>Confirmed Pts</strong> — Points credited after Site Manager closes & rates ticket
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Hourglass className="w-4 h-4 text-amber-500" />
+            <strong>Pending Pts</strong> — Awaiting Site Manager confirmation; not counted in ranking
           </div>
         </div>
       </main>

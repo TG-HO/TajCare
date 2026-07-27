@@ -59,6 +59,10 @@ export function getStatusBadgeColor(status: TicketStatus | string) {
       return "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold";
     case "Closed":
       return "bg-slate-100 text-slate-700 border-slate-300";
+    case "Reopened":
+      return "bg-rose-50 text-rose-700 border-rose-300 font-semibold";
+    case "Permanently Closed":
+      return "bg-slate-800 text-slate-100 border-slate-700 font-semibold";
     default:
       return "bg-slate-50 text-slate-700 border-slate-200";
   }
