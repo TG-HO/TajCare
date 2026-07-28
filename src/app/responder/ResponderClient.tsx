@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Ticket, Profile, TicketStatus } from "@/types/database";
-import { getStatusBadgeColor, formatDate } from "@/lib/utils";
+import { getStatusBadgeColor, formatDate, getTicketConfirmedPoints } from "@/lib/utils";
 import { updateTicketStatusAction } from "./actions";
 import { toast } from "sonner";
 import {
@@ -19,7 +19,9 @@ import {
   Lock,
   RotateCcw,
 } from "lucide-react";
+import Link from "next/link";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
+import RefreshButton from "@/components/RefreshButton";
 
 export default function ResponderClient({
   profile,
@@ -43,7 +45,7 @@ export default function ResponderClient({
 
   // Stats for the banner
   const pendingPts = tickets.reduce((s, t) => s + (t.points_pending ?? 0), 0);
-  const confirmedPts = tickets.reduce((s, t) => s + (t.confirmed_points ?? 0), 0);
+  const confirmedPts = tickets.reduce((s, t) => s + getTicketConfirmedPoints(t), 0);
 
   function handleOpenActionModal(ticket: Ticket, newStatus: TicketStatus) {
     setSelectedTicket(ticket);
@@ -110,16 +112,28 @@ export default function ResponderClient({
           </p>
         </div>
 
-        {/* Points Summary */}
-        <div className="flex gap-3 flex-wrap">
-          <div className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-center min-w-[110px]">
+        {/* Points Summary & Task Navigation */}
+        <div className="flex gap-3 flex-wrap items-center">
+          <Link
+            href="/responder/tasks"
+            className="bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl px-4 py-3 text-center min-w-[110px] transition-all"
+          >
+            <div className="flex items-center justify-center gap-1 text-purple-300 mb-1">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-semibold uppercase">Tasks</span>
+            </div>
+            <div className="text-sm font-extrabold text-white">Operational Tasks →</div>
+          </Link>
+
+          <div className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-center min-w-[100px]">
             <div className="flex items-center justify-center gap-1.5 text-amber-300 mb-1">
               <Hourglass className="w-3.5 h-3.5" />
               <span className="text-[10px] font-semibold uppercase">Pending</span>
             </div>
             <div className="text-xl font-extrabold text-amber-300">{pendingPts} pts</div>
           </div>
-          <div className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-center min-w-[110px]">
+
+          <div className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-center min-w-[100px]">
             <div className="flex items-center justify-center gap-1.5 text-emerald-300 mb-1">
               <BadgeCheck className="w-3.5 h-3.5" />
               <span className="text-[10px] font-semibold uppercase">Confirmed</span>
@@ -130,7 +144,7 @@ export default function ResponderClient({
       </div>
 
       {/* Filter Bar */}
-      <div className="flex items-center justify-between bg-white p-4 border border-slate-200 rounded-2xl shadow-sm">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 border border-slate-200 rounded-2xl shadow-sm gap-3">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-slate-600">Filter Status:</span>
           <select
@@ -144,11 +158,14 @@ export default function ResponderClient({
             <option value="Visit Date Scheduled">Visit Scheduled</option>
             <option value="Visited">Visited</option>
             <option value="Issue Resolved">Resolved (Awaiting SM)</option>
+            <option value="Awaiting Admin Approval">Awaiting Admin Approval</option>
             <option value="Reopened">Reopened</option>
             <option value="Closed">Closed</option>
             <option value="Permanently Closed">Permanently Closed</option>
           </select>
         </div>
+
+        <RefreshButton />
       </div>
 
       {/* Queue List */}

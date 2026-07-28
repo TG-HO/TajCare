@@ -10,6 +10,7 @@ import {
   BarChart3,
   Trophy,
   Ticket,
+  CheckCircle2,
 } from "lucide-react";
 
 export default function AdminNavLinks() {
@@ -26,6 +27,11 @@ export default function AdminNavLinks() {
       name: "Master Tickets Monitor",
       href: "/admin/tickets",
       icon: Ticket,
+    },
+    {
+      name: "Operational Tasks",
+      href: "/admin/tasks",
+      icon: CheckCircle2,
     },
     {
       name: "User Management",

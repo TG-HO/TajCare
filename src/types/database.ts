@@ -7,9 +7,13 @@ export type TicketStatus =
   | 'Visit Date Scheduled'
   | 'Visited'
   | 'Issue Resolved'
+  | 'Awaiting Admin Approval'
   | 'Closed'
   | 'Reopened'
   | 'Permanently Closed';
+
+export type TaskStatus = 'Pending' | 'In Progress' | 'Completed' | 'Approved' | 'Cancelled';
+export type TaskPriority = 'Low' | 'Medium' | 'High' | 'Critical';
 
 export interface Location {
   id: string;
@@ -82,16 +86,12 @@ export interface Ticket {
   visit_remarks?: string | null;
   closure_rating?: number | null;
   closure_remarks?: string | null;
-  /** Legacy column — kept in sync with confirmed_points on close */
   points_awarded?: number;
-  /** Points set when responder marks Issue Resolved. Awaiting SM confirmation. */
   points_pending?: number;
-  /** Points confirmed only after Site Manager closes and rates the ticket. */
   confirmed_points?: number;
   sla_due_at?: string;
   sla_breached?: boolean;
   reopened_count?: number;
-  /** Timestamp of closure — used for 3-day grace window calculation. */
   closed_at?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -101,6 +101,80 @@ export interface Ticket {
   issue_type?: PredefinedIssue | null;
   assigned_responder?: Profile | null;
   ticket_logs?: TicketLog[];
+}
+
+export interface Task {
+  id: string;
+  task_number: number;
+  title: string;
+  description: string;
+  location_id: string;
+  created_by: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  due_date?: string | null;
+  expected_completion_date?: string | null;
+  base_points?: number;
+  points_pending?: number;
+  confirmed_points?: number;
+  attachments?: string[];
+  created_at?: string;
+  updated_at?: string;
+  // Joined relations
+  location?: Location | null;
+  creator?: Profile | null;
+  assignees?: Profile[];
+  task_assignees?: { responder?: Profile | null }[];
+  task_logs?: TaskLog[];
+}
+
+export interface TaskAssignee {
+  task_id: string;
+  responder_id: string;
+  assigned_at?: string;
+  responder?: Profile | null;
+}
+
+export interface TaskLog {
+  id: string;
+  task_id: string;
+  actor_id: string;
+  previous_status?: string | null;
+  new_status: string;
+  remarks: string;
+  created_at?: string;
+  actor?: Profile | null;
+}
+
+export interface PointsTransaction {
+  id: string;
+  ticket_id?: string | null;
+  task_id?: string | null;
+  responder_id: string;
+  event_type: 'RESOLVED_PENDING' | 'ADMIN_CONFIRMED' | 'REOPENED_REVERTED' | 'ADMIN_MODIFIED' | 'TASK_CONFIRMED';
+  base_points: number;
+  rating_multiplier?: number;
+  sla_penalty?: number;
+  final_points: number;
+  actor_id?: string | null;
+  remarks?: string | null;
+  created_at?: string;
+  actor?: Profile | null;
+  ticket?: Ticket | null;
+  task?: Task | null;
+}
+
+export interface SystemNotification {
+  id: string;
+  user_id: string;
+  actor_id?: string | null;
+  title: string;
+  message: string;
+  type: string;
+  reference_id?: string | null;
+  read: boolean;
+  created_at: string;
+  actor?: Profile | null;
 }
 
 export interface ResponderMonthlyPoints {
@@ -113,6 +187,5 @@ export interface ResponderMonthlyPoints {
   closed_complaints: number;
   created_at?: string;
   updated_at?: string;
-  // Joined
   responder?: Profile | null;
 }

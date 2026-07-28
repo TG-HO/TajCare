@@ -12,6 +12,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import Link from "next/link";
+import { getTicketConfirmedPoints } from "@/lib/utils";
 
 const MONTH_NAMES = [
   "", "January", "February", "March", "April", "May", "June",
@@ -53,6 +54,17 @@ export default async function LeaderboardPage({
   const selectedYear = parseInt(searchParams.year || String(defaultYear));
   const viewMode = searchParams.view || "monthly"; // "monthly" | "alltime"
 
+  // Fetch current user profile role for back button routing
+  const { data: currentUserProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const isUserAdmin = currentUserProfile?.role === "admin";
+  const isUserResponder = currentUserProfile?.role === "responder";
+  const dashboardHref = isUserAdmin ? "/admin" : isUserResponder ? "/responder" : "/dashboard";
+
   // Fetch responder profiles
   const { data: responders } = await supabase
     .from("profiles")
@@ -66,16 +78,18 @@ export default async function LeaderboardPage({
     .eq("month", selectedMonth)
     .eq("year", selectedYear);
 
-  // Fetch all-time tickets for SLA and rating data
-  const { data: allTickets } = await supabase
+  // Fetch all-time tickets for SLA, rating, and dynamic points computation
+  const { data: rawAllTickets } = await supabase
     .from("tickets")
-    .select("assigned_responder_id, status, closure_rating, sla_breached, confirmed_points, points_pending, closed_at");
+    .select("*, issue_type:predefined_issues(*)");
 
-  // Filter tickets for selected month (for monthly view stats)
-  const monthlyTickets = (allTickets || []).filter((t) => {
-    if (!t.closed_at) return false;
-    const d = new Date(t.closed_at);
-    return d.getMonth() + 1 === selectedMonth && d.getFullYear() === selectedYear;
+  const allTickets = (rawAllTickets || []) as unknown as any[];
+
+  // Filter tickets for selected month
+  const monthlyTickets = allTickets.filter((t) => {
+    const closedDate = t.closed_at ? new Date(t.closed_at) : (t.updated_at ? new Date(t.updated_at) : null);
+    if (!closedDate) return false;
+    return closedDate.getMonth() + 1 === selectedMonth && closedDate.getFullYear() === selectedYear;
   });
 
   const leaderboardMap = new Map<string, LeaderboardEntry>();
@@ -96,82 +110,45 @@ export default async function LeaderboardPage({
     });
   });
 
-  if (viewMode === "monthly") {
-    // Use monthly snapshot table for confirmed/pending points
-    (monthlyPoints || []).forEach((mp) => {
-      const entry = leaderboardMap.get(mp.responder_id);
-      if (!entry) return;
-      entry.confirmed_points = mp.confirmed_points || 0;
-      entry.pending_points = mp.pending_points || 0;
-      entry.total_resolved = mp.closed_complaints || 0;
-    });
+  const targetTickets = viewMode === "monthly" ? monthlyTickets : allTickets;
 
-    // Augment with SLA and rating from monthly tickets
-    const ratingsSumMap = new Map<string, number>();
-    const ratedCountMap = new Map<string, number>();
+  const ratingsSumMap = new Map<string, number>();
+  const ratedCountMap = new Map<string, number>();
 
-    monthlyTickets.forEach((t) => {
-      if (!t.assigned_responder_id) return;
-      const entry = leaderboardMap.get(t.assigned_responder_id);
-      if (!entry) return;
-      if (t.sla_breached) entry.sla_breaches += 1;
-      entry.total_assigned += 1;
-      if (t.closure_rating) {
-        const sum = (ratingsSumMap.get(t.assigned_responder_id) || 0) + t.closure_rating;
-        const cnt = (ratedCountMap.get(t.assigned_responder_id) || 0) + 1;
-        ratingsSumMap.set(t.assigned_responder_id, sum);
-        ratedCountMap.set(t.assigned_responder_id, cnt);
-      }
-    });
+  targetTickets.forEach((t) => {
+    if (!t.assigned_responder_id) return;
+    const entry = leaderboardMap.get(t.assigned_responder_id);
+    if (!entry) return;
 
-    leaderboardMap.forEach((entry) => {
-      const ratedCount = ratedCountMap.get(entry.responder_id) || 0;
-      const ratingSum = ratingsSumMap.get(entry.responder_id) || 0;
-      entry.avg_rating = ratedCount > 0 ? parseFloat((ratingSum / ratedCount).toFixed(1)) : 5.0;
-      entry.sla_compliance_rate =
-        entry.total_assigned > 0
-          ? Math.max(0, Math.round(((entry.total_assigned - entry.sla_breaches) / entry.total_assigned) * 100))
-          : 100;
-    });
-  } else {
-    // All-time: aggregate from tickets
-    const ratingsSumMap = new Map<string, number>();
-    const ratedCountMap = new Map<string, number>();
+    entry.total_assigned += 1;
+    if (t.sla_breached) entry.sla_breaches += 1;
 
-    (allTickets || []).forEach((t) => {
-      if (!t.assigned_responder_id) return;
-      const entry = leaderboardMap.get(t.assigned_responder_id);
-      if (!entry) return;
+    if (t.status === "Closed" || t.status === "Permanently Closed") {
+      entry.total_resolved += 1;
+      entry.confirmed_points += getTicketConfirmedPoints(t);
+    }
 
-      entry.total_assigned += 1;
-      if (t.sla_breached) entry.sla_breaches += 1;
+    if (t.status === "Issue Resolved" || t.status === "Reopened" || t.status === "Awaiting Admin Approval") {
+      entry.pending_points += t.points_pending || 0;
+    }
 
-      if (t.status === "Closed" || t.status === "Permanently Closed") {
-        entry.total_resolved += 1;
-        entry.confirmed_points += t.confirmed_points || 0;
-      }
-      if (t.status === "Issue Resolved" || t.status === "Reopened") {
-        entry.pending_points += t.points_pending || 0;
-      }
+    if (t.closure_rating) {
+      const sum = (ratingsSumMap.get(t.assigned_responder_id) || 0) + t.closure_rating;
+      const cnt = (ratedCountMap.get(t.assigned_responder_id) || 0) + 1;
+      ratingsSumMap.set(t.assigned_responder_id, sum);
+      ratedCountMap.set(t.assigned_responder_id, cnt);
+    }
+  });
 
-      if (t.closure_rating) {
-        const sum = (ratingsSumMap.get(t.assigned_responder_id) || 0) + t.closure_rating;
-        const cnt = (ratedCountMap.get(t.assigned_responder_id) || 0) + 1;
-        ratingsSumMap.set(t.assigned_responder_id, sum);
-        ratedCountMap.set(t.assigned_responder_id, cnt);
-      }
-    });
-
-    leaderboardMap.forEach((entry) => {
-      const ratedCount = ratedCountMap.get(entry.responder_id) || 0;
-      const ratingSum = ratingsSumMap.get(entry.responder_id) || 0;
-      entry.avg_rating = ratedCount > 0 ? parseFloat((ratingSum / ratedCount).toFixed(1)) : 5.0;
-      entry.sla_compliance_rate =
-        entry.total_assigned > 0
-          ? Math.max(0, Math.round(((entry.total_assigned - entry.sla_breaches) / entry.total_assigned) * 100))
-          : 100;
-    });
-  }
+  leaderboardMap.forEach((entry) => {
+    const ratedCount = ratedCountMap.get(entry.responder_id) || 0;
+    const ratingSum = ratingsSumMap.get(entry.responder_id) || 0;
+    entry.avg_rating = ratedCount > 0 ? parseFloat((ratingSum / ratedCount).toFixed(1)) : 5.0;
+    entry.sla_compliance_rate =
+      entry.total_assigned > 0
+        ? Math.max(0, Math.round(((entry.total_assigned - entry.sla_breaches) / entry.total_assigned) * 100))
+        : 100;
+  });
 
   // Sort by confirmed points descending
   const leaderboardList: LeaderboardEntry[] = Array.from(leaderboardMap.values()).sort(
@@ -206,11 +183,11 @@ export default async function LeaderboardPage({
         </div>
 
         <Link
-          href="/dashboard"
+          href={dashboardHref}
           className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          My Dashboard
+          {isUserAdmin ? "Back to Admin Panel" : "My Dashboard"}
         </Link>
       </header>
 

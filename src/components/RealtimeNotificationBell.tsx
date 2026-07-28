@@ -21,27 +21,48 @@ export default function RealtimeNotificationBell({ userId }: { userId?: string }
   useEffect(() => {
     const supabase = createClient();
 
-    // Subscribe to realtime changes on tickets table
+    // Fetch initial persistent notifications if userId exists
+    if (userId) {
+      supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(20)
+        .then(({ data }) => {
+          if (data) {
+            const mapped = data.map((n) => ({
+              id: n.id,
+              title: n.title,
+              message: n.message,
+              timestamp: n.created_at,
+              read: n.read,
+            }));
+            setNotifications(mapped);
+          }
+        });
+    }
+
+    // Subscribe to realtime changes on notifications table
     const channel = supabase
-      .channel("realtime-ticket-notifications")
+      .channel("realtime-notifications")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "tickets" },
+        { event: "INSERT", schema: "public", table: "notifications" },
         (payload) => {
           const payloadNew = payload.new as any;
-          const newStatus = payloadNew?.status;
-          const ticketNum = payloadNew?.ticket_number;
+          if (!userId || payloadNew.user_id === userId) {
+            const notif: NotificationItem = {
+              id: payloadNew.id || String(Date.now()),
+              title: payloadNew.title || "System Notification",
+              message: payloadNew.message || "",
+              timestamp: payloadNew.created_at || new Date().toISOString(),
+              read: false,
+            };
 
-          const notif: NotificationItem = {
-            id: String(Date.now()),
-            title: `Ticket #${ticketNum || "Update"}`,
-            message: `Status updated to "${newStatus || "Modified"}"`,
-            timestamp: new Date().toISOString(),
-            read: false,
-          };
-
-          setNotifications((prev) => [notif, ...prev]);
-          toast.info(`🔔 ${notif.title}: ${notif.message}`);
+            setNotifications((prev) => [notif, ...prev]);
+            toast.info(`🔔 ${notif.title}: ${notif.message}`);
+          }
         }
       )
       .subscribe();
@@ -53,8 +74,21 @@ export default function RealtimeNotificationBell({ userId }: { userId?: string }
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  function markAllRead() {
+  async function markAllRead() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    if (userId) {
+      const supabase = createClient();
+      await supabase.from("notifications").update({ read: true }).eq("user_id", userId);
+    }
+  }
+
+  async function clearAllNotifications() {
+    setNotifications([]);
+    if (userId) {
+      const supabase = createClient();
+      await supabase.from("notifications").delete().eq("user_id", userId);
+    }
+    toast.success("Notifications cleared!");
   }
 
   return (
@@ -76,23 +110,33 @@ export default function RealtimeNotificationBell({ userId }: { userId?: string }
           <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Bell className="w-4 h-4 text-[#0F172A]" />
-              <span className="font-bold text-xs text-[#0F172A]">Live Notifications</span>
+              <span className="font-bold text-xs text-[#0F172A]">Notifications</span>
             </div>
-            {unreadCount > 0 && (
-              <button
-                onClick={markAllRead}
-                className="text-[10px] font-semibold text-emerald-600 hover:underline"
-              >
-                Mark all read
-              </button>
-            )}
+            <div className="flex items-center gap-2 text-[10px]">
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllRead}
+                  className="font-semibold text-emerald-600 hover:underline"
+                >
+                  Mark read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  onClick={clearAllNotifications}
+                  className="font-semibold text-rose-600 hover:underline"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 text-xs">
             {notifications.length === 0 ? (
               <div className="p-6 text-center text-slate-400">
                 <Ticket className="w-6 h-6 mx-auto mb-2 opacity-50" />
-                No new notifications. Realtime listener active.
+                No notifications recorded.
               </div>
             ) : (
               notifications.map((n) => (

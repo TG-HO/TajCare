@@ -3,6 +3,7 @@
 import { Ticket } from "@/types/database";
 import { getStatusBadgeColor, getComplexityBadgeColor, formatDate } from "@/lib/utils";
 import { X, MapPin, User, Clock, Award, Calendar, AlertTriangle, MessageSquare, ShieldCheck, Wrench } from "lucide-react";
+import AuditTimeline from "@/components/AuditTimeline";
 
 export default function TicketDetailDrawer({
   ticket,
@@ -105,50 +106,7 @@ export default function TicketDetailDrawer({
           </div>
 
           {/* Ticket Logs & Remarks Activity History */}
-          <div className="space-y-3 pt-2">
-            <h3 className="font-bold text-[#0F172A] uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-slate-400" /> Action & Remarks Timeline ({logs.length})
-            </h3>
-
-            {logs.length === 0 ? (
-              <p className="text-slate-400 italic">No activity logs recorded yet.</p>
-            ) : (
-              <div className="relative pl-4 border-l-2 border-slate-200 space-y-4">
-                {logs.map((log) => (
-                  <div key={log.id} className="relative group">
-                    {/* Circle Dot */}
-                    <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[#0F172A] border-2 border-white ring-2 ring-slate-100" />
-
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-[#0F172A]">
-                          {log.actor?.full_name || "System"}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {formatDate(log.created_at)}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="inline-block px-2 py-0.5 rounded bg-slate-200 text-[#0F172A] font-bold text-[10px]">
-                          → {log.new_status}
-                        </span>
-                        {log.visit_date && (
-                          <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                            Visit: {formatDate(log.visit_date)}
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-slate-600 text-xs mt-1 leading-relaxed">
-                        {log.remarks}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <AuditTimeline logs={logs} />
         </div>
 
         {/* Footer */}

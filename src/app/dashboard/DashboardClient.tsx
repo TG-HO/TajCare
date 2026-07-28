@@ -19,6 +19,7 @@ import {
 import Link from "next/link";
 import TicketRatingModal from "@/components/TicketRatingModal";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
+import RefreshButton from "@/components/RefreshButton";
 import { permanentlyCloseExpiredTicketsAction } from "@/app/tickets/actions";
 
 export default function DashboardClient({
@@ -130,6 +131,8 @@ export default function DashboardClient({
             Closed History ({completedTickets.length})
           </button>
         </div>
+
+        <RefreshButton />
       </div>
 
       {/* Tickets List */}
