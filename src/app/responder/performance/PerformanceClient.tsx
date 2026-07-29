@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ticket, Profile, PointsTransaction, ResponderMonthlyPoints } from "@/types/database";
+import { Ticket, Profile, PointsTransaction, ResponderMonthlyPoints, Task } from "@/types/database";
 import { Wrench, Award, Star, ArrowLeft, CalendarDays, Hourglass, BadgeCheck, TrendingUp, Calculator } from "lucide-react";
 import Link from "next/link";
 import { formatDate, getTicketConfirmedPoints } from "@/lib/utils";
@@ -16,11 +16,13 @@ const MONTH_NAMES = [
 export default function PerformanceClient({
   profile,
   tickets,
+  tasks = [],
   monthlyHistory,
   transactions,
 }: {
   profile: Profile;
   tickets: Ticket[];
+  tasks?: Task[];
   monthlyHistory: ResponderMonthlyPoints[];
   transactions: PointsTransaction[];
 }) {
@@ -33,11 +35,13 @@ export default function PerformanceClient({
   const closedTickets = tickets.filter(
     (t) => t.status === "Closed" || t.status === "Permanently Closed"
   );
-
-  const totalConfirmedAllTime = closedTickets.reduce(
-    (sum, t) => sum + getTicketConfirmedPoints(t),
-    0
+  const closedTasks = (tasks || []).filter(
+    (tk) => tk.status === "Closed" || tk.status === "Approved"
   );
+
+  const ticketPts = closedTickets.reduce((sum, t) => sum + getTicketConfirmedPoints(t), 0);
+  const taskPts = closedTasks.reduce((sum, tk) => sum + (tk.confirmed_points || 0), 0);
+  const totalConfirmedAllTime = ticketPts + taskPts;
 
   const currentMonthTickets = closedTickets.filter((t) => {
     const d = t.closed_at ? new Date(t.closed_at) : (t.updated_at ? new Date(t.updated_at) : null);
@@ -45,10 +49,15 @@ export default function PerformanceClient({
     return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
   });
 
-  const currentMonthConfirmedPts = currentMonthTickets.reduce(
-    (sum, t) => sum + getTicketConfirmedPoints(t),
-    0
-  );
+  const currentMonthTasks = closedTasks.filter((tk) => {
+    const d = tk.closed_at ? new Date(tk.closed_at) : (tk.updated_at ? new Date(tk.updated_at) : null);
+    if (!d) return false;
+    return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
+  });
+
+  const currentMonthConfirmedPts =
+    currentMonthTickets.reduce((sum, t) => sum + getTicketConfirmedPoints(t), 0) +
+    currentMonthTasks.reduce((sum, tk) => sum + (tk.confirmed_points || 0), 0);
 
   const currentPendingPts = tickets
     .filter((t) => (t.status === "Issue Resolved" || t.status === "Reopened" || t.status === "Awaiting Admin Approval"))

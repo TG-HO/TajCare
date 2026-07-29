@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "sonner";
 import PWAInstallBanner from "@/components/PWAInstallBanner";
+import NavigationProgressLoader from "@/components/NavigationProgressLoader";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased bg-[#F8FAFC] text-[#0F172A]">
+        <NavigationProgressLoader />
         {children}
         <PWAInstallBanner />
         <Toaster position="top-right" richColors />

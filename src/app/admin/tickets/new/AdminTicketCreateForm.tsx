@@ -5,6 +5,7 @@ import { Location, Profile, PredefinedIssue } from "@/types/database";
 import { adminCreateTicketAction } from "@/app/tickets/actions";
 import { toast } from "sonner";
 import { Loader2, Send } from "lucide-react";
+import SearchableLocationSelect from "@/components/SearchableLocationSelect";
 import { useRouter } from "next/navigation";
 
 export default function AdminTicketCreateForm({
@@ -59,17 +60,11 @@ export default function AdminTicketCreateForm({
           <label className="block font-bold text-[#0F172A] uppercase mb-1">
             Target Site / Location *
           </label>
-          <select
+          <SearchableLocationSelect
+            locations={locations}
             value={locationId}
-            onChange={(e) => setLocationId(e.target.value)}
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-purple-600 focus:outline-none"
-          >
-            {locations.map((loc) => (
-              <option key={loc.id} value={loc.id}>
-                {loc.name} ({loc.type === "fueling_site" ? "Fueling Site" : "Head Office"})
-              </option>
-            ))}
-          </select>
+            onChange={(id) => setLocationId(id)}
+          />
         </div>
 
         <div>

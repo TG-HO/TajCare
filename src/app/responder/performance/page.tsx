@@ -48,10 +48,27 @@ export default async function ResponderPerformancePage() {
 
   const monthlyHistory = monthlyData || [];
 
+  // Fetch tasks assigned to this responder
+  const { data: assignees } = await supabase
+    .from("task_assignees")
+    .select("task_id")
+    .eq("responder_id", user.id);
+
+  const taskIds = (assignees || []).map((a) => a.task_id);
+
+  let tasks: any[] = [];
+  if (taskIds.length > 0) {
+    const { data: tasksData } = await supabase
+      .from("tasks")
+      .select("*, location:locations(*)")
+      .in("id", taskIds);
+    tasks = tasksData || [];
+  }
+
   // Fetch points transactions audit log
   const { data: transactionsData } = await supabase
     .from("points_transactions")
-    .select("*, ticket:tickets(*)")
+    .select("*, ticket:tickets(*), task:tasks(*)")
     .eq("responder_id", user.id)
     .order("created_at", { ascending: false });
 
@@ -61,6 +78,7 @@ export default async function ResponderPerformancePage() {
     <PerformanceClient
       profile={profile}
       tickets={tickets}
+      tasks={tasks as any}
       monthlyHistory={monthlyHistory}
       transactions={transactions}
     />

@@ -41,6 +41,23 @@ export default async function ResponderPage() {
 
   const tickets: Ticket[] = (ticketsData || []) as unknown as Ticket[];
 
+  // Fetch tasks assigned to this responder for banner points
+  const { data: assignees } = await supabase
+    .from("task_assignees")
+    .select("task_id")
+    .eq("responder_id", user.id);
+
+  const taskIds = (assignees || []).map((a) => a.task_id);
+
+  let tasks: any[] = [];
+  if (taskIds.length > 0) {
+    const { data: tasksData } = await supabase
+      .from("tasks")
+      .select("*")
+      .in("id", taskIds);
+    tasks = tasksData || [];
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       {/* Header */}
@@ -87,7 +104,7 @@ export default async function ResponderPage() {
 
       {/* Main Content */}
       <main className="p-8 max-w-6xl mx-auto">
-        <ResponderClient profile={profile} tickets={tickets} />
+        <ResponderClient profile={profile} tickets={tickets} tasks={tasks as any} />
       </main>
     </div>
   );

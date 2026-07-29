@@ -26,9 +26,11 @@ import RefreshButton from "@/components/RefreshButton";
 export default function ResponderClient({
   profile,
   tickets,
+  tasks = [],
 }: {
   profile: Profile;
   tickets: Ticket[];
+  tasks?: any[];
 }) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [targetStatus, setTargetStatus] = useState<TicketStatus | null>(null);
@@ -43,9 +45,12 @@ export default function ResponderClient({
     return t.status === statusFilter;
   });
 
-  // Stats for the banner
+  // Stats for the banner (combining complaints and operational tasks)
+  const closedTasks = (tasks || []).filter((tk) => tk.status === "Closed" || tk.status === "Approved");
+  const taskConfirmedPts = closedTasks.reduce((s, tk) => s + (tk.confirmed_points || 0), 0);
+
   const pendingPts = tickets.reduce((s, t) => s + (t.points_pending ?? 0), 0);
-  const confirmedPts = tickets.reduce((s, t) => s + getTicketConfirmedPoints(t), 0);
+  const confirmedPts = tickets.reduce((s, t) => s + getTicketConfirmedPoints(t), 0) + taskConfirmedPts;
 
   function handleOpenActionModal(ticket: Ticket, newStatus: TicketStatus) {
     setSelectedTicket(ticket);

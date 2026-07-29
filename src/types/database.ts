@@ -12,7 +12,19 @@ export type TicketStatus =
   | 'Reopened'
   | 'Permanently Closed';
 
-export type TaskStatus = 'Pending' | 'In Progress' | 'Completed' | 'Approved' | 'Cancelled';
+export type TaskStatus =
+  | 'Pending'
+  | 'First Visit Assigned'
+  | 'Visited'
+  | 'Second Visit Assigned'
+  | 'Third Visit Assigned'
+  | 'Next Visit Assigned'
+  | 'Due Date Assigned'
+  | 'In Progress'
+  | 'Completed'
+  | 'Closed'
+  | 'Approved'
+  | 'Cancelled';
 export type TaskPriority = 'Low' | 'Medium' | 'High' | 'Critical';
 
 export interface Location {
@@ -113,7 +125,13 @@ export interface Task {
   priority: TaskPriority;
   status: TaskStatus;
   due_date?: string | null;
+  first_visit_date?: string | null;
+  current_visit_number?: number;
+  next_visit_date?: string | null;
   expected_completion_date?: string | null;
+  closure_rating?: number | null;
+  closure_remarks?: string | null;
+  closed_at?: string | null;
   base_points?: number;
   points_pending?: number;
   confirmed_points?: number;
@@ -126,6 +144,23 @@ export interface Task {
   assignees?: Profile[];
   task_assignees?: { responder?: Profile | null }[];
   task_logs?: TaskLog[];
+  task_visits?: TaskVisit[];
+}
+
+export interface TaskVisit {
+  id: string;
+  task_id: string;
+  visit_number: number;
+  assigned_visit_date: string;
+  actual_visit_date?: string | null;
+  responder_id?: string | null;
+  status: 'Scheduled' | 'Visited' | 'Cancelled';
+  remarks?: string | null;
+  attachments?: string[];
+  admin_action?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  responder?: Profile | null;
 }
 
 export interface TaskAssignee {

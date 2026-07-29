@@ -1,7 +1,6 @@
 {
-  "/leaderboard/page": "app/leaderboard/page.js",
+  "/responder/performance/page": "app/responder/performance/page.js",
   "/responder/page": "app/responder/page.js",
-  "/admin/page": "app/admin/page.js",
-  "/admin/tasks/page": "app/admin/tasks/page.js",
-  "/admin/tickets/page": "app/admin/tickets/page.js"
+  "/responder/tasks/page": "app/responder/tasks/page.js",
+  "/admin/tasks/page": "app/admin/tasks/page.js"
 }

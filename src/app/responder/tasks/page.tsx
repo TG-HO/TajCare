@@ -42,7 +42,8 @@ export default async function ResponderTasksPage() {
         location:locations(*),
         creator:profiles!created_by(*),
         task_assignees(responder:profiles(*)),
-        task_logs(*, actor:profiles(*))
+        task_logs(*, actor:profiles(*)),
+        task_visits(*, responder:profiles(*))
       `)
       .in("id", taskIds)
       .order("created_at", { ascending: false });

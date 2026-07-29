@@ -85,9 +85,22 @@ export default async function LeaderboardPage({
 
   const allTickets = (rawAllTickets || []) as unknown as any[];
 
-  // Filter tickets for selected month
+  // Fetch operational tasks for task points computation
+  const { data: rawAllTasks } = await supabase
+    .from("tasks")
+    .select("*, assignees:task_assignees(responder_id)");
+
+  const allTasks = (rawAllTasks || []) as unknown as any[];
+
+  // Filter tickets & tasks for selected month
   const monthlyTickets = allTickets.filter((t) => {
     const closedDate = t.closed_at ? new Date(t.closed_at) : (t.updated_at ? new Date(t.updated_at) : null);
+    if (!closedDate) return false;
+    return closedDate.getMonth() + 1 === selectedMonth && closedDate.getFullYear() === selectedYear;
+  });
+
+  const monthlyTasks = allTasks.filter((tk) => {
+    const closedDate = tk.closed_at ? new Date(tk.closed_at) : (tk.updated_at ? new Date(tk.updated_at) : null);
     if (!closedDate) return false;
     return closedDate.getMonth() + 1 === selectedMonth && closedDate.getFullYear() === selectedYear;
   });
@@ -111,6 +124,7 @@ export default async function LeaderboardPage({
   });
 
   const targetTickets = viewMode === "monthly" ? monthlyTickets : allTickets;
+  const targetTasks = viewMode === "monthly" ? monthlyTasks : allTasks;
 
   const ratingsSumMap = new Map<string, number>();
   const ratedCountMap = new Map<string, number>();
@@ -138,6 +152,26 @@ export default async function LeaderboardPage({
       ratingsSumMap.set(t.assigned_responder_id, sum);
       ratedCountMap.set(t.assigned_responder_id, cnt);
     }
+  });
+
+  // Include confirmed task points for assignees
+  targetTasks.forEach((tk) => {
+    if (tk.status !== "Closed" && tk.status !== "Approved") return;
+    const confirmedPts = tk.confirmed_points || 0;
+    const assignees = tk.assignees || [];
+    assignees.forEach((a: any) => {
+      const entry = leaderboardMap.get(a.responder_id);
+      if (entry) {
+        entry.confirmed_points += confirmedPts;
+        entry.total_resolved += 1;
+        if (tk.closure_rating) {
+          const sum = (ratingsSumMap.get(a.responder_id) || 0) + tk.closure_rating;
+          const cnt = (ratedCountMap.get(a.responder_id) || 0) + 1;
+          ratingsSumMap.set(a.responder_id, sum);
+          ratedCountMap.set(a.responder_id, cnt);
+        }
+      }
+    });
   });
 
   leaderboardMap.forEach((entry) => {
