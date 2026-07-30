@@ -196,49 +196,69 @@ export async function updateResponderBindingAction(
   backupResponderId: string | null,
   locationIds: string[]
 ) {
-  const adminClient = createAdminClient();
+  try {
+    const adminClient = createAdminClient();
 
-  const primaryLoc = locationIds && locationIds.length > 0 ? locationIds[0] : null;
+    // Clean backup ID (must be null if not on leave or empty)
+    const cleanBackupId =
+      isOnLeave && backupResponderId && backupResponderId.trim().length > 0
+        ? backupResponderId.trim()
+        : null;
 
-  // Update profile leave status, backup, and primary location
-  const { error: profileError } = await adminClient
-    .from("profiles")
-    .update({
-      is_on_leave: isOnLeave,
-      backup_responder_id: backupResponderId || null,
-      location_id: primaryLoc,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", responderId);
-
-  if (profileError) {
-    return { error: profileError.message };
-  }
-
-  // Delete existing bindings
-  await adminClient
-    .from("responder_locations")
-    .delete()
-    .eq("responder_id", responderId);
-
-  // Insert new bindings
-  if (locationIds && locationIds.length > 0) {
-    const rows = locationIds.map((locId) => ({
-      responder_id: responderId,
-      location_id: locId,
-    }));
-
-    const { error: bindError } = await adminClient
-      .from("responder_locations")
-      .insert(rows);
-
-    if (bindError) {
-      return { error: `Binding error: ${bindError.message}` };
+    if (isOnLeave && !cleanBackupId) {
+      return { error: "Please select an assigned Backup Responder when marking a responder as On Leave." };
     }
-  }
 
-  revalidatePath("/admin/users");
-  return { success: true, message: "Responder bindings and leave status updated successfully!" };
+    if (cleanBackupId === responderId) {
+      return { error: "A responder cannot be assigned as their own backup responder." };
+    }
+
+    const primaryLoc = locationIds && locationIds.length > 0 ? locationIds[0] : null;
+
+    // Update profile leave status, backup, and primary location
+    const { error: profileError } = await adminClient
+      .from("profiles")
+      .update({
+        is_on_leave: Boolean(isOnLeave),
+        backup_responder_id: cleanBackupId,
+        location_id: primaryLoc,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", responderId);
+
+    if (profileError) {
+      return { error: `Profile update failed: ${profileError.message}` };
+    }
+
+    // Delete existing location bindings
+    await adminClient
+      .from("responder_locations")
+      .delete()
+      .eq("responder_id", responderId);
+
+    // Insert new location bindings
+    if (locationIds && locationIds.length > 0) {
+      const rows = locationIds.map((locId) => ({
+        responder_id: responderId,
+        location_id: locId,
+      }));
+
+      const { error: bindError } = await adminClient
+        .from("responder_locations")
+        .insert(rows);
+
+      if (bindError) {
+        return { error: `Location binding failed: ${bindError.message}` };
+      }
+    }
+
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/tickets");
+    revalidatePath("/responder");
+    return { success: true, message: "Responder leave status and location bindings updated successfully!" };
+  } catch (err: any) {
+    return { error: err.message || "An unexpected error occurred while updating responder leave status." };
+  }
 }
 
 export async function deleteUserAction(userId: string) {

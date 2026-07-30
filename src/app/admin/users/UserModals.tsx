@@ -123,20 +123,32 @@ export default function UserModals({
     e.preventDefault();
     if (!responderToEdit) return;
 
-    setResponderLoading(true);
-    const result = await updateResponderBindingAction(
-      responderToEdit.id,
-      isOnLeave,
-      backupResponderId || null,
-      boundLocationIds
-    );
-    setResponderLoading(false);
+    if (isOnLeave && !backupResponderId) {
+      toast.error("Please select an assigned Backup Responder when marking On Leave.");
+      return;
+    }
 
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      toast.success(result.message);
-      onResponderEditClose?.();
+    setResponderLoading(true);
+    try {
+      const result = await updateResponderBindingAction(
+        responderToEdit.id,
+        isOnLeave,
+        isOnLeave ? (backupResponderId || null) : null,
+        boundLocationIds
+      );
+      setResponderLoading(false);
+
+      if (result?.error) {
+        toast.error(result.error);
+      } else if (result?.success) {
+        toast.success(result.message || "Responder settings updated successfully!");
+        onResponderEditClose?.();
+      } else {
+        toast.error("Failed to update responder settings.");
+      }
+    } catch (err: any) {
+      setResponderLoading(false);
+      toast.error(err?.message || "Error updating responder settings.");
     }
   }
 
@@ -509,12 +521,12 @@ export default function UserModals({
                   {locations.map((loc) => {
                     const isChecked = boundLocationIds.includes(loc.id);
                     return (
-                      <label
+                      <div
                         key={loc.id}
                         onClick={() => toggleLocationBinding(loc.id)}
                         className={`flex items-center justify-between p-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-all ${
                           isChecked
-                            ? "bg-white border-[#0F172A] text-[#0F172A] shadow-sm"
+                            ? "bg-white border-[#0F172A] text-[#0F172A] shadow-sm font-bold"
                             : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
                         }`}
                       >
@@ -526,10 +538,10 @@ export default function UserModals({
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() => {}} // Handled by container onClick
-                          className="w-4 h-4 accent-[#0F172A]"
+                          onChange={() => {}} // Handled by container div onClick
+                          className="w-4 h-4 accent-[#0F172A] pointer-events-none"
                         />
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
