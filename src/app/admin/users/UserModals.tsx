@@ -351,10 +351,14 @@ export default function UserModals({
             </div>
 
             <div className="space-y-4 pt-4">
-              <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl text-xs text-emerald-900 space-y-1">
+              <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl text-xs text-emerald-900 space-y-1.5">
                 <p className="font-semibold">CSV Column Formatting Instructions:</p>
                 <p>Ensure your CSV contains header fields: <code className="bg-emerald-100 px-1 py-0.5 rounded font-mono">full_name, email, role, location_name, phone_number</code></p>
                 <p className="text-emerald-700">Supported Roles: <code>employee</code>, <code>site_manager</code>, <code>responder</code>, <code>admin</code></p>
+                <div className="pt-2 border-t border-emerald-200 flex items-center gap-2 font-bold text-amber-900 bg-amber-50 p-2.5 rounded-xl border border-amber-300 shadow-sm">
+                  <span className="text-base">🔑</span>
+                  <span>Default Account Password: <code className="bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded font-mono text-xs font-extrabold">Taj@1234</code>. Share these initial credentials (User Email & Taj@1234) with imported employees.</span>
+                </div>
               </div>
 
               {/* Upload Drop Area */}

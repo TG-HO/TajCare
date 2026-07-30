@@ -106,12 +106,12 @@ export async function bulkCreateUsersAction(usersList: Array<{
       continue;
     }
 
-    const defaultPassword = "TajCareTempPassword123!";
+    const defaultPassword = "Taj@1234";
     const locId = userRow.location_name
       ? locationMap.get(userRow.location_name.trim().toLowerCase()) || null
       : null;
 
-    // Create auth user
+    // Create auth user with default password Taj@1234
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email,
       password: defaultPassword,
@@ -122,22 +122,25 @@ export async function bulkCreateUsersAction(usersList: Array<{
     let userId: string | undefined = authData?.user?.id;
 
     if (authError) {
-      // If user already exists, update profile
-      if (authError.message.includes("already")) {
+      // If user already exists in Auth, fetch profile and reset password to Taj@1234
+      if (authError.message.toLowerCase().includes("already")) {
         const { data: existingProfiles } = await adminClient
           .from("profiles")
           .select("id")
           .eq("email", email)
           .single();
 
-        if (existingProfiles) {
+        if (existingProfiles && existingProfiles.id) {
           userId = existingProfiles.id;
+          // Synchronize password to Taj@1234 in Supabase Auth
+          await adminClient.auth.admin.updateUserById(existingProfiles.id, { password: defaultPassword });
+          
           await adminClient.from("profiles").update({
             full_name: fullName,
             role,
             location_id: locId,
             phone_number: userRow.phone_number || null,
-          }).eq("id", userId);
+          }).eq("id", existingProfiles.id);
           createdCount++;
         } else {
           errors.push(`User ${email}: Auth exists but profile update failed.`);
@@ -181,7 +184,7 @@ export async function bulkCreateUsersAction(usersList: Array<{
     createdCount,
     totalCount: usersList.length,
     errors,
-    message: `Successfully created/updated ${createdCount} of ${usersList.length} users. ${
+    message: `Successfully created/updated ${createdCount} of ${usersList.length} users with default password (Taj@1234). ${
       errors.length > 0 ? `(${errors.length} skipped/errored)` : ""
     }`,
   };
@@ -242,7 +245,15 @@ export async function deleteUserAction(userId: string) {
   const adminClient = createAdminClient();
 
   try {
-    // Delete dependent references first
+    // Delete dependent references across all tables to prevent foreign key errors
+    await adminClient.from("task_assignees").delete().eq("responder_id", userId);
+    await adminClient.from("task_visits").delete().eq("responder_id", userId);
+    await adminClient.from("task_logs").delete().eq("actor_id", userId);
+    await adminClient.from("points_transactions").delete().eq("responder_id", userId);
+    await adminClient.from("points_transactions").delete().eq("actor_id", userId);
+    await adminClient.from("responder_monthly_points").delete().eq("responder_id", userId);
+    await adminClient.from("notifications").delete().eq("user_id", userId);
+    await adminClient.from("notifications").delete().eq("actor_id", userId);
     await adminClient.from("ticket_logs").delete().eq("actor_id", userId);
     await adminClient.from("tickets").delete().eq("complainant_id", userId);
     await adminClient.from("tickets").update({ assigned_responder_id: null }).eq("assigned_responder_id", userId);
@@ -250,6 +261,7 @@ export async function deleteUserAction(userId: string) {
     await adminClient.from("ticket_drafts").delete().eq("user_id", userId);
     await adminClient.from("profiles").delete().eq("id", userId);
 
+    // Delete user from Supabase Auth
     const { error } = await adminClient.auth.admin.deleteUser(userId);
 
     if (error && !error.message.includes("User not found")) {
@@ -257,7 +269,7 @@ export async function deleteUserAction(userId: string) {
     }
 
     revalidatePath("/admin/users");
-    return { success: true, message: "User deleted successfully." };
+    return { success: true, message: "User deleted successfully from Profiles & Supabase Auth." };
   } catch (err: any) {
     return { error: err.message || "Failed to delete user." };
   }
