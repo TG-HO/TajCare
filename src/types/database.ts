@@ -101,6 +101,7 @@ export interface Ticket {
   points_awarded?: number;
   points_pending?: number;
   confirmed_points?: number;
+  attachments?: string[];
   sla_due_at?: string;
   sla_breached?: boolean;
   reopened_count?: number;

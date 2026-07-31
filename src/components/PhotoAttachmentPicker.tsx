@@ -1,7 +1,43 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Camera, Image as ImageIcon, X, Paperclip } from "lucide-react";
+import { Camera, Image as ImageIcon, X } from "lucide-react";
+
+function compressImageToBase64(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1000;
+
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.75));
+        } else {
+          resolve((event.target?.result as string) || "");
+        }
+      };
+      img.onerror = () => resolve((event.target?.result as string) || "");
+      img.src = (event.target?.result as string) || "";
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function PhotoAttachmentPicker({
   onAttachmentsChange,
@@ -11,14 +47,19 @@ export default function PhotoAttachmentPicker({
   const [attachments, setAttachments] = useState<{ file: File; preview: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const selectedFiles = Array.from(e.target.files || []);
     if (selectedFiles.length === 0) return;
 
-    const newItems = selectedFiles.map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-    }));
+    const newItems = await Promise.all(
+      selectedFiles.map(async (file) => {
+        const base64 = await compressImageToBase64(file);
+        return {
+          file,
+          preview: base64,
+        };
+      })
+    );
 
     const updated = [...attachments, ...newItems].slice(0, 3); // Max 3 attachments
     setAttachments(updated);
@@ -43,7 +84,7 @@ export default function PhotoAttachmentPicker({
           Photo Evidence / Attachments (Max 3)
         </label>
         <span className="text-[11px] text-slate-400">
-          Attach images of dispenser leaks, POS error codes, etc.
+          Attach images of dispenser leaks, POS error codes, hardware issues, etc.
         </span>
       </div>
 
@@ -80,6 +121,13 @@ export default function PhotoAttachmentPicker({
           </button>
         )}
       </div>
+
+      {/* Hidden input to pass base64 image data string array in native form submissions */}
+      <input
+        type="hidden"
+        name="attachments_data"
+        value={JSON.stringify(attachments.map((a) => a.preview))}
+      />
 
       <input
         ref={fileInputRef}

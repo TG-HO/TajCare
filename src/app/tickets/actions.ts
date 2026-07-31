@@ -116,6 +116,14 @@ export async function createTicketAction(formData: FormData) {
     }
   }
 
+  const rawAttachments = (formData.get("attachments_data") as string) || "[]";
+  let attachments: string[] = [];
+  try {
+    attachments = JSON.parse(rawAttachments);
+  } catch (e) {
+    attachments = [];
+  }
+
   const { data: ticket, error } = await supabase
     .from("tickets")
     .insert({
@@ -128,6 +136,8 @@ export async function createTicketAction(formData: FormData) {
       assigned_responder_id: assignedResponderId,
       sla_due_at: slaDueAt,
       points_awarded: basePoints,
+      points_pending: basePoints,
+      attachments,
     })
     .select()
     .single();
@@ -232,6 +242,14 @@ export async function adminCreateTicketAction(formData: FormData) {
     }
   }
 
+  const rawAttachments = (formData.get("attachments_data") as string) || "[]";
+  let attachments: string[] = [];
+  try {
+    attachments = JSON.parse(rawAttachments);
+  } catch (e) {
+    attachments = [];
+  }
+
   const { data: ticket, error } = await adminClient
     .from("tickets")
     .insert({
@@ -244,6 +262,8 @@ export async function adminCreateTicketAction(formData: FormData) {
       assigned_responder_id: responderId || null,
       sla_due_at: slaDueAt,
       points_awarded: basePoints,
+      points_pending: basePoints,
+      attachments,
     })
     .select()
     .single();

@@ -18,9 +18,11 @@ import {
   BadgeCheck,
   Lock,
   RotateCcw,
+  Camera,
 } from "lucide-react";
 import Link from "next/link";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
+import ImageLightboxModal from "@/components/ImageLightboxModal";
 import RefreshButton from "@/components/RefreshButton";
 
 export default function ResponderClient({
@@ -38,6 +40,7 @@ export default function ResponderClient({
   const [remarks, setRemarks] = useState("");
   const [loading, setLoading] = useState(false);
   const [drawerTicket, setDrawerTicket] = useState<Ticket | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
 
   const filteredTickets = tickets.filter((t) => {
@@ -264,6 +267,31 @@ export default function ResponderClient({
                   <div className="space-y-1 max-w-xl">
                     <h3 className="font-bold text-[#0F172A] text-base">{title}</h3>
                     <p className="text-xs text-slate-600 line-clamp-2">{ticket.description}</p>
+
+                    {/* Photo Evidence Thumbnail Bar (Rendered ONLY if images attached) */}
+                    {ticket.attachments && ticket.attachments.length > 0 && (
+                      <div className="pt-1.5 flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                          <Camera className="w-3 h-3 text-purple-600" /> Evidence Photos ({ticket.attachments.length}):
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {ticket.attachments.map((imgUrl, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setLightboxUrl(imgUrl)}
+                              className="w-10 h-10 rounded-lg border border-slate-200 overflow-hidden shadow-sm hover:scale-105 transition-transform block"
+                            >
+                              <img
+                                src={imgUrl}
+                                alt={`Evidence ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {ticket.scheduled_visit_date && (
                       <div
                         className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
@@ -501,6 +529,11 @@ export default function ResponderClient({
       {/* Ticket Detail Drawer */}
       {drawerTicket && (
         <TicketDetailDrawer ticket={drawerTicket} onClose={() => setDrawerTicket(null)} />
+      )}
+
+      {/* Full screen image lightbox preview modal */}
+      {lightboxUrl && (
+        <ImageLightboxModal imageUrl={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       )}
     </div>
   );

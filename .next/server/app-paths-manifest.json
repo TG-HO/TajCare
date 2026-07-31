@@ -1,6 +1,22 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/cron/check-sla/route": "app/api/cron/check-sla/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/api/seed/route": "app/api/seed/route.js",
   "/page": "app/page.js",
+  "/responder/page": "app/responder/page.js",
+  "/leaderboard/page": "app/leaderboard/page.js",
   "/login/page": "app/login/page.js",
-  "/admin/users/page": "app/admin/users/page.js",
-  "/admin/page": "app/admin/page.js"
+  "/responder/performance/page": "app/responder/performance/page.js",
+  "/tickets/new/page": "app/tickets/new/page.js",
+  "/responder/tasks/page": "app/responder/tasks/page.js",
+  "/profile/settings/page": "app/profile/settings/page.js",
+  "/admin/locations/page": "app/admin/locations/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/admin/analytics/page": "app/admin/analytics/page.js",
+  "/admin/issues/page": "app/admin/issues/page.js",
+  "/admin/tickets/new/page": "app/admin/tickets/new/page.js",
+  "/admin/tasks/page": "app/admin/tasks/page.js",
+  "/admin/tickets/page": "app/admin/tickets/page.js",
+  "/admin/users/page": "app/admin/users/page.js"
 }

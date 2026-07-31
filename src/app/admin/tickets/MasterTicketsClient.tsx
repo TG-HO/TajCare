@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Ticket, Location, Profile } from "@/types/database";
 import { getStatusBadgeColor, formatDate } from "@/lib/utils";
-import { Search, Filter, Eye, Ticket as TicketIcon, MapPin, User, ShieldCheck, Clock, Star, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Search, Filter, Eye, Ticket as TicketIcon, MapPin, User, ShieldCheck, Clock, Star, AlertTriangle, CheckCircle2, Camera } from "lucide-react";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 
 export default function MasterTicketsClient({
@@ -153,7 +153,14 @@ export default function MasterTicketsClient({
                     <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="p-4">
                         <div>
-                          <span className="font-extrabold text-[#0F172A]">#{t.ticket_number}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-extrabold text-[#0F172A]">#{t.ticket_number}</span>
+                            {t.attachments && t.attachments.length > 0 && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                <Camera className="w-2.5 h-2.5 text-purple-600" /> {t.attachments.length} Photo{t.attachments.length > 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
                           <p className="font-bold text-slate-800 text-xs mt-0.5 max-w-xs truncate">{title}</p>
                           <span className="text-[10px] text-slate-400">{formatDate(t.created_at)}</span>
                         </div>

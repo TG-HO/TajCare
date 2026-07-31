@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Ticket } from "@/types/database";
 import { getStatusBadgeColor, getComplexityBadgeColor, formatDate } from "@/lib/utils";
-import { X, MapPin, User, Clock, Award, Calendar, AlertTriangle, MessageSquare, ShieldCheck, Wrench } from "lucide-react";
+import { X, MapPin, User, Clock, Award, Calendar, AlertTriangle, MessageSquare, ShieldCheck, Wrench, Camera } from "lucide-react";
 import AuditTimeline from "@/components/AuditTimeline";
+import ImageLightboxModal from "@/components/ImageLightboxModal";
 
 export default function TicketDetailDrawer({
   ticket,
@@ -12,6 +14,8 @@ export default function TicketDetailDrawer({
   ticket: Ticket;
   onClose: () => void;
 }) {
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
   const issueTitle =
     ticket.issue_type?.issue_title || ticket.custom_issue_title || "General Issue";
 
@@ -105,6 +109,34 @@ export default function TicketDetailDrawer({
             </div>
           </div>
 
+          {/* Photo Evidence / Attachments Section (Rendered ONLY if images exist) */}
+          {ticket.attachments && ticket.attachments.length > 0 && (
+            <div className="space-y-1.5">
+              <h3 className="font-bold text-[#0F172A] uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5 text-purple-600" /> Photo Evidence / Attachments ({ticket.attachments.length})
+              </h3>
+              <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                {ticket.attachments.map((imgUrl, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setLightboxUrl(imgUrl)}
+                    className="relative w-28 h-28 rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-all group block text-left"
+                  >
+                    <img
+                      src={imgUrl}
+                      alt={`Attachment ${idx + 1}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px]">
+                      View Image
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Ticket Logs & Remarks Activity History */}
           <AuditTimeline logs={logs} />
         </div>
@@ -113,12 +145,20 @@ export default function TicketDetailDrawer({
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg shadow"
+            className="px-4 py-2 bg-[#0F172A] text-[#F8FAFC] text-xs font-semibold rounded-lg shadow"
           >
             Close Panel
           </button>
         </div>
       </div>
+
+      {/* Full screen image lightbox preview modal */}
+      {lightboxUrl && (
+        <ImageLightboxModal
+          imageUrl={lightboxUrl}
+          onClose={() => setLightboxUrl(null)}
+        />
+      )}
     </div>
   );
 }
