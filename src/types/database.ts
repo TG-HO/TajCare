@@ -127,6 +127,13 @@ export interface Ticket {
   sla_breached?: boolean;
   escalation_level?: number;
   last_escalated_at?: string | null;
+  locked_for_responder?: boolean;
+  supervisor_handled?: boolean;
+  supervisor_handling_id?: string | null;
+  supervisor_handling?: Profile | null;
+  reassigned_from_id?: string | null;
+  reassigned_from?: Profile | null;
+  reassigned_at?: string | null;
   reopened_count?: number;
   closed_at?: string | null;
   created_at?: string;
@@ -210,7 +217,15 @@ export interface PointsTransaction {
   ticket_id?: string | null;
   task_id?: string | null;
   responder_id: string;
-  event_type: 'RESOLVED_PENDING' | 'ADMIN_CONFIRMED' | 'REOPENED_REVERTED' | 'ADMIN_MODIFIED' | 'TASK_CONFIRMED';
+  event_type:
+    | 'RESOLVED_PENDING'
+    | 'ADMIN_CONFIRMED'
+    | 'REOPENED_REVERTED'
+    | 'ADMIN_MODIFIED'
+    | 'TASK_CONFIRMED'
+    | 'ESCALATION_PENALTY'
+    | 'REASSIGNMENT_PENALTY'
+    | 'POINTS_REVERSED';
   base_points: number;
   rating_multiplier?: number;
   sla_penalty?: number;

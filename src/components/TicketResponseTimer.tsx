@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Clock, AlertTriangle, Flame, CheckCircle2, ShieldAlert } from "lucide-react";
+import { Clock, AlertTriangle, Flame, CheckCircle2, ShieldAlert, Lock } from "lucide-react";
 import { Ticket } from "@/types/database";
 
 interface TicketResponseTimerProps {
@@ -50,24 +50,24 @@ export default function TicketResponseTimer({
       ? issue.line_manager_response_hours * 60 + (issue.line_manager_response_minutes ?? 0)
       : defaultStep;
 
-  const createdAt = new Date(ticket.created_at || Date.now()).getTime();
+  const baseCreatedAt = new Date(ticket.reassigned_at || ticket.created_at || Date.now()).getTime();
 
   // Target deadline calculation
-  let targetDeadline = createdAt + responderMins * 60 * 1000;
+  let targetDeadline = baseCreatedAt + responderMins * 60 * 1000;
   let stageName = isResponderView ? "Time to Respond" : "Responder Window";
   let nextStage = "Supervisor";
 
   if (currentLevel === 1) {
     const baseTime = ticket.last_escalated_at
       ? new Date(ticket.last_escalated_at).getTime()
-      : createdAt + responderMins * 60 * 1000;
+      : baseCreatedAt + responderMins * 60 * 1000;
     targetDeadline = baseTime + supervisorMins * 60 * 1000;
     stageName = "Supervisor Window";
     nextStage = "Line Manager";
   } else if (currentLevel === 2) {
     const baseTime = ticket.last_escalated_at
       ? new Date(ticket.last_escalated_at).getTime()
-      : createdAt + (responderMins + supervisorMins) * 60 * 1000;
+      : baseCreatedAt + (responderMins + supervisorMins) * 60 * 1000;
     targetDeadline = baseTime + lineManagerMins * 60 * 1000;
     stageName = "Line Mgr Window";
     nextStage = "HOD & Admin";
@@ -129,6 +129,18 @@ export default function TicketResponseTimer({
       >
         <CheckCircle2 className="w-3 h-3 text-emerald-600" />
         Responded
+      </span>
+    );
+  }
+
+  // B2. Locked for responder state
+  if (isResponderView && ticket.locked_for_responder) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 ${className}`}
+      >
+        <Lock className="w-3 h-3 text-amber-600" />
+        Locked by Supervisor
       </span>
     );
   }

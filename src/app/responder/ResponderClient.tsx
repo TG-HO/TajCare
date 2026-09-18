@@ -232,6 +232,14 @@ export default function ResponderClient({
                       </span>
                     )}
 
+                    {/* Locked for Responder Badge */}
+                    {ticket.locked_for_responder && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                        <Lock className="w-2.5 h-2.5 text-amber-700" />
+                        Locked: Managed by Supervisor
+                      </span>
+                    )}
+
                     {/* SLA breach */}
                     {ticket.status === "Visit Date Scheduled" && visitPassed && (
                       <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 flex items-center gap-1">
@@ -315,6 +323,16 @@ export default function ResponderClient({
                         <Hourglass className="w-3 h-3" /> Awaiting Site Manager to Close & Rate
                       </div>
                     )}
+
+                    {/* Locked for Responder Notice */}
+                    {ticket.locked_for_responder && (
+                      <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
+                        <Lock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <span>
+                          <strong>Supervisor Managed:</strong> This complaint has been locked by a Supervisor. IT Responder actions are disabled.
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions & State Transitions */}
@@ -327,8 +345,16 @@ export default function ResponderClient({
                       View Timeline
                     </button>
 
-                    {/* Skip actions for closed/permanently-closed */}
-                    {!isPermanentlyClosed && ticket.status !== "Closed" && (
+                    {/* If ticket is locked for responder, show locked indicator and suppress action buttons */}
+                    {ticket.locked_for_responder && !isPermanentlyClosed && ticket.status !== "Closed" && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-500 rounded-xl text-xs font-bold border border-slate-200 cursor-not-allowed">
+                        <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Locked for Responder</span>
+                      </div>
+                    )}
+
+                    {/* Skip actions for closed/permanently-closed/locked */}
+                    {!isPermanentlyClosed && ticket.status !== "Closed" && !ticket.locked_for_responder && (
                       <>
                         {/* HEAD OFFICE WORKFLOW */}
                         {isHeadOffice && (
@@ -532,7 +558,11 @@ export default function ResponderClient({
 
       {/* Ticket Detail Drawer */}
       {drawerTicket && (
-        <TicketDetailDrawer ticket={drawerTicket} onClose={() => setDrawerTicket(null)} />
+        <TicketDetailDrawer
+          ticket={drawerTicket}
+          userRole="responder"
+          onClose={() => setDrawerTicket(null)}
+        />
       )}
 
       {/* Full screen image lightbox preview modal */}

@@ -74,11 +74,19 @@ export default async function AdminMasterTicketsPage() {
   }
   const { data: respondersData } = await respondersQuery;
 
+  // Fetch supervisors for reassignment options (for line managers / admin)
+  const { data: supervisorsData } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("role", "supervisor")
+    .order("full_name");
+
   return (
     <MasterTicketsClient
       tickets={tickets}
       locations={(locationsData as Location[]) || []}
       responders={(respondersData as Profile[]) || []}
+      supervisors={(supervisorsData as Profile[]) || []}
       userRole={profile?.role || "admin"}
       isScoped={isScoped}
     />

@@ -19,6 +19,7 @@ import {
   RotateCw,
   Zap,
   X,
+  Lock,
 } from "lucide-react";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import { toast } from "sonner";
@@ -29,12 +30,14 @@ export default function MasterTicketsClient({
   tickets,
   locations,
   responders,
+  supervisors = [],
   userRole = "admin",
   isScoped = false,
 }: {
   tickets: Ticket[];
   locations: Location[];
   responders: Profile[];
+  supervisors?: Profile[];
   userRole?: string;
   isScoped?: boolean;
 }) {
@@ -427,6 +430,13 @@ export default function MasterTicketsClient({
                           )}
 
                           {/* Execution Hierarchy Escalation Badges */}
+                          {t.locked_for_responder && (
+                            <div>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                                <Lock className="w-2.5 h-2.5 text-amber-700" /> Supervised (Locked)
+                              </span>
+                            </div>
+                          )}
                           {t.escalation_level === 1 && (
                             <div>
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
@@ -480,6 +490,9 @@ export default function MasterTicketsClient({
       {drawerTicket && (
         <TicketDetailDrawer
           ticket={drawerTicket}
+          userRole={userRole}
+          responders={responders}
+          supervisors={supervisors}
           onClose={() => setDrawerTicket(null)}
         />
       )}

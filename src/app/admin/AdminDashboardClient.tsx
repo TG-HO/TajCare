@@ -468,6 +468,7 @@ export default function AdminDashboardClient({
       {selectedTicket && (
         <TicketDetailDrawer
           ticket={selectedTicket}
+          userRole={userRole}
           onClose={() => setSelectedTicket(null)}
         />
       )}

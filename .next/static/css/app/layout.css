@@ -1599,6 +1599,9 @@ video {
 .bg-indigo-50\/60 {
   background-color: rgb(238 242 255 / 0.6);
 }
+.bg-indigo-50\/70 {
+  background-color: rgb(238 242 255 / 0.7);
+}
 .bg-indigo-500\/20 {
   background-color: rgb(99 102 241 / 0.2);
 }
@@ -1689,6 +1692,9 @@ video {
 }
 .bg-slate-900\/90 {
   background-color: rgb(15 23 42 / 0.9);
+}
+.bg-slate-950\/70 {
+  background-color: rgb(2 6 23 / 0.7);
 }
 .bg-slate-950\/85 {
   background-color: rgb(2 6 23 / 0.85);

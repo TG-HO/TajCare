@@ -38,6 +38,10 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
       created_at,
       escalation_level,
       last_escalated_at,
+      reassigned_at,
+      locked_for_responder,
+      supervisor_handled,
+      supervisor_handling_id,
       assigned_responder_id,
       complainant_id,
       issue_type:predefined_issues(
@@ -83,16 +87,26 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
   const now = Date.now();
 
   for (const ticket of tickets) {
-    // Check if responder has made any log activity for this ticket
-    const { count: responderLogCount } = await adminClient
-      .from("ticket_logs")
-      .select("*", { count: "exact", head: true })
-      .eq("ticket_id", ticket.id)
-      .eq("actor_id", ticket.assigned_responder_id || "none");
+    const currentLevel = ticket.escalation_level || 0;
+    const baseStartTime = ticket.reassigned_at || ticket.created_at;
 
-    if ((responderLogCount || 0) > 0) {
-      // Responder has taken action/logged a remark on this ticket
-      continue;
+    // Check if responder has made any log activity since start/reassignment
+    if (currentLevel === 0 && !ticket.locked_for_responder) {
+      let logQuery = adminClient
+        .from("ticket_logs")
+        .select("*", { count: "exact", head: true })
+        .eq("ticket_id", ticket.id)
+        .eq("actor_id", ticket.assigned_responder_id || "none");
+
+      if (baseStartTime) {
+        logQuery = logQuery.gte("created_at", baseStartTime);
+      }
+
+      const { count: responderLogCount } = await logQuery;
+      if ((responderLogCount || 0) > 0) {
+        // Responder has actively taken action/logged remark
+        continue;
+      }
     }
 
     // Determine target resolution SLA minutes
@@ -123,9 +137,6 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
         ? (issue.line_manager_response_hours * 60 + (issue.line_manager_response_minutes ?? 0))
         : defaultStepMinutes;
 
-    const createdAt = new Date(ticket.created_at).getTime();
-    const elapsedMinutes = Math.floor((now - createdAt) / (60 * 1000));
-    const currentLevel = ticket.escalation_level || 0;
     const responder = ticket.assigned_responder as any;
     const responderName = responder?.full_name || "Assigned Responder";
 
@@ -133,65 +144,76 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
     let targetRoleName = "";
     let recipientIds: string[] = [];
     let currentThresholdMinutes = responderStepMins;
+    let elapsedMinutes = 0;
 
-    // Cumulative thresholds
-    const stage1Threshold = responderStepMins;
-    const stage2Threshold = responderStepMins + supervisorStepMins;
-    const stage3Threshold = responderStepMins + supervisorStepMins + lineManagerStepMins;
+    // Evaluate based on current escalation level
+    if (currentLevel === 0) {
+      const startMs = new Date(baseStartTime).getTime();
+      elapsedMinutes = Math.floor((now - startMs) / (60 * 1000));
+      currentThresholdMinutes = responderStepMins;
 
-    // Stage 3: Elapsed >= stage3Threshold -> HOD & Super Admin
-    if (elapsedMinutes >= stage3Threshold && currentLevel < 3) {
-      targetLevel = 3;
-      targetRoleName = "HOD & Admin";
-      currentThresholdMinutes = stage3Threshold;
+      if (elapsedMinutes >= responderStepMins) {
+        targetLevel = 1;
+        targetRoleName = "Supervisor";
 
-      let hodId = responder?.hod_id;
-      if (!hodId && responder?.line_manager_id) {
-        const lm = lineManagers.find((m) => m.id === responder.line_manager_id);
-        hodId = lm?.hod_id;
+        if (responder?.supervisor_id) {
+          recipientIds.push(responder.supervisor_id);
+        } else if (supervisors.length > 0) {
+          recipientIds = supervisors.map((s) => s.id);
+        } else if (lineManagers.length > 0) {
+          recipientIds = lineManagers.map((m) => m.id);
+        } else {
+          recipientIds = admins.map((a) => a.id);
+        }
       }
+    } else if (currentLevel === 1) {
+      const stepStart = ticket.last_escalated_at
+        ? new Date(ticket.last_escalated_at).getTime()
+        : new Date(baseStartTime).getTime() + responderStepMins * 60 * 1000;
+      elapsedMinutes = Math.floor((now - stepStart) / (60 * 1000));
+      currentThresholdMinutes = supervisorStepMins;
 
-      if (hodId) {
-        recipientIds.push(hodId);
-      } else if (hods.length > 0) {
-        recipientIds.push(...hods.map((h) => h.id));
+      if (elapsedMinutes >= supervisorStepMins) {
+        targetLevel = 2;
+        targetRoleName = "Line Manager";
+
+        let lmId = responder?.line_manager_id;
+        if (!lmId && responder?.supervisor_id) {
+          const sup = supervisors.find((s) => s.id === responder.supervisor_id);
+          lmId = sup?.line_manager_id;
+        }
+
+        if (lmId) {
+          recipientIds.push(lmId);
+        } else if (lineManagers.length > 0) {
+          recipientIds = lineManagers.map((m) => m.id);
+        } else {
+          recipientIds = admins.map((a) => a.id);
+        }
       }
-      recipientIds.push(...admins.map((a) => a.id));
-    }
-    // Stage 2: Elapsed >= stage2Threshold -> Line Manager
-    else if (elapsedMinutes >= stage2Threshold && currentLevel < 2) {
-      targetLevel = 2;
-      targetRoleName = "Line Manager";
-      currentThresholdMinutes = stage2Threshold;
+    } else if (currentLevel === 2) {
+      const stepStart = ticket.last_escalated_at
+        ? new Date(ticket.last_escalated_at).getTime()
+        : new Date(baseStartTime).getTime() + (responderStepMins + supervisorStepMins) * 60 * 1000;
+      elapsedMinutes = Math.floor((now - stepStart) / (60 * 1000));
+      currentThresholdMinutes = lineManagerStepMins;
 
-      let lmId = responder?.line_manager_id;
-      if (!lmId && responder?.supervisor_id) {
-        const sup = supervisors.find((s) => s.id === responder.supervisor_id);
-        lmId = sup?.line_manager_id;
-      }
+      if (elapsedMinutes >= lineManagerStepMins) {
+        targetLevel = 3;
+        targetRoleName = "HOD & Admin";
 
-      if (lmId) {
-        recipientIds.push(lmId);
-      } else if (lineManagers.length > 0) {
-        recipientIds = lineManagers.map((m) => m.id);
-      } else {
-        recipientIds = admins.map((a) => a.id);
-      }
-    }
-    // Stage 1: Elapsed >= stage1Threshold -> Supervisor
-    else if (elapsedMinutes >= stage1Threshold && currentLevel < 1) {
-      targetLevel = 1;
-      targetRoleName = "Supervisor";
-      currentThresholdMinutes = stage1Threshold;
+        let hodId = responder?.hod_id;
+        if (!hodId && responder?.line_manager_id) {
+          const lm = lineManagers.find((m) => m.id === responder.line_manager_id);
+          hodId = lm?.hod_id;
+        }
 
-      if (responder?.supervisor_id) {
-        recipientIds.push(responder.supervisor_id);
-      } else if (supervisors.length > 0) {
-        recipientIds = supervisors.map((s) => s.id);
-      } else if (lineManagers.length > 0) {
-        recipientIds = lineManagers.map((m) => m.id);
-      } else {
-        recipientIds = admins.map((a) => a.id);
+        if (hodId) {
+          recipientIds.push(hodId);
+        } else if (hods.length > 0) {
+          recipientIds.push(...hods.map((h) => h.id));
+        }
+        recipientIds.push(...admins.map((a) => a.id));
       }
     }
 
