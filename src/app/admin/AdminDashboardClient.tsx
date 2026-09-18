@@ -32,6 +32,8 @@ export default function AdminDashboardClient({
   issueCount,
   awaitingApprovalTickets,
   recentTasks,
+  userRole = "admin",
+  isScopedRole = false,
 }: {
   totalUsers: number;
   responderCount: number;
@@ -39,6 +41,8 @@ export default function AdminDashboardClient({
   issueCount: number;
   awaitingApprovalTickets: Ticket[];
   recentTasks: Task[];
+  userRole?: string;
+  isScopedRole?: boolean;
 }) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [approvingTicket, setApprovingTicket] = useState<Ticket | null>(null);
@@ -75,13 +79,20 @@ export default function AdminDashboardClient({
       <div className="bg-gradient-to-r from-[#0F172A] to-slate-800 text-white rounded-2xl p-8 shadow-md border border-slate-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-medium mb-3">
-            <BadgeCheck className="w-3.5 h-3.5" /> Operations & Quality Assurance Control
+            <BadgeCheck className="w-3.5 h-3.5" />
+            {isScopedRole
+              ? `${userRole.toUpperCase()} PORTAL • TEAM AUDIT`
+              : "Operations & Quality Assurance Control"}
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">
-            Taj Care Operations Control Center
+            {isScopedRole
+              ? `${userRole === "supervisor" ? "Field Supervisor" : userRole === "line_manager" ? "Line Manager" : "HOD"} Operations Desk`
+              : "Taj Care Operations Control Center"}
           </h1>
           <p className="text-sm text-slate-300 mt-1 max-w-xl">
-            Review ratings, approve confirmed points, dispatch operational tasks, and log admin complaints.
+            {isScopedRole
+              ? "Monitoring complaints, SLA resolution durations, and visits for your assigned responders."
+              : "Review ratings, approve confirmed points, dispatch operational tasks, and log admin complaints."}
           </p>
         </div>
 
@@ -190,37 +201,67 @@ export default function AdminDashboardClient({
 
       {/* Operations Quick Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Link
-          href="/admin/users"
-          className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase">Total Users</span>
-            <div className="p-2.5 rounded-xl border bg-blue-50 text-blue-700 border-blue-200">
-              <Users className="w-5 h-5" />
+        {isScopedRole ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Assigned Team</span>
+              <div className="p-2.5 rounded-xl border bg-blue-50 text-blue-700 border-blue-200">
+                <Users className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-3xl font-extrabold text-[#0F172A]">{responderCount}</div>
+              <p className="text-xs text-slate-500 mt-1">Assigned Responders Under Oversight</p>
             </div>
           </div>
-          <div className="mt-4">
-            <div className="text-3xl font-extrabold text-[#0F172A]">{totalUsers}</div>
-            <p className="text-xs text-slate-500 mt-1">Staff, Managers & Responders</p>
-          </div>
-        </Link>
+        ) : (
+          <Link
+            href="/admin/users"
+            className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Total Users</span>
+              <div className="p-2.5 rounded-xl border bg-blue-50 text-blue-700 border-blue-200">
+                <Users className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-3xl font-extrabold text-[#0F172A]">{totalUsers}</div>
+              <p className="text-xs text-slate-500 mt-1">Staff, Managers & Responders</p>
+            </div>
+          </Link>
+        )}
 
-        <Link
-          href="/admin/users?role=responder"
-          className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase">IT Responders</span>
-            <div className="p-2.5 rounded-xl border bg-emerald-50 text-emerald-700 border-emerald-200">
-              <BadgeCheck className="w-5 h-5" />
+        {isScopedRole ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Assigned Responders</span>
+              <div className="p-2.5 rounded-xl border bg-emerald-50 text-emerald-700 border-emerald-200">
+                <BadgeCheck className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-3xl font-extrabold text-[#0F172A]">{responderCount}</div>
+              <p className="text-xs text-slate-500 mt-1">Active field responders</p>
             </div>
           </div>
-          <div className="mt-4">
-            <div className="text-3xl font-extrabold text-[#0F172A]">{responderCount}</div>
-            <p className="text-xs text-slate-500 mt-1">Multi-site responders</p>
-          </div>
-        </Link>
+        ) : (
+          <Link
+            href="/admin/users?role=responder"
+            className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase">IT Responders</span>
+              <div className="p-2.5 rounded-xl border bg-emerald-50 text-emerald-700 border-emerald-200">
+                <BadgeCheck className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-3xl font-extrabold text-[#0F172A]">{responderCount}</div>
+              <p className="text-xs text-slate-500 mt-1">Multi-site responders</p>
+            </div>
+          </Link>
+        )}
 
         <Link
           href="/admin/locations"

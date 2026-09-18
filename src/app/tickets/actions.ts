@@ -61,19 +61,23 @@ export async function createTicketAction(formData: FormData) {
   }
 
   let basePoints = 20;
+  let totalSlaMinutes = 24 * 60;
   if (issueTypeId) {
     const { data: issue } = await supabase
       .from("predefined_issues")
-      .select("base_points")
+      .select("base_points, resolution_time_hours, resolution_time_minutes")
       .eq("id", issueTypeId)
       .maybeSingle();
 
     if (issue) {
       basePoints = issue.base_points;
+      const h = issue.resolution_time_hours ?? 24;
+      const m = issue.resolution_time_minutes ?? 0;
+      totalSlaMinutes = h * 60 + m;
     }
   }
 
-  const slaDueAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const slaDueAt = new Date(Date.now() + totalSlaMinutes * 60 * 1000).toISOString();
   let assignedResponderId: string | null = null;
 
   const { data: bindings } = await supabase
@@ -198,17 +202,35 @@ export async function adminCreateTicketAction(formData: FormData) {
   const adminClient = createAdminClient();
 
   let basePoints = 20;
+  let totalSlaMinutes = 24 * 60;
+
+  const formHours = formData.get("custom_resolution_hours");
+  const formMinutes = formData.get("custom_resolution_minutes");
+
   if (issueTypeId) {
     const { data: issue } = await adminClient
       .from("predefined_issues")
-      .select("base_points")
+      .select("base_points, resolution_time_hours, resolution_time_minutes")
       .eq("id", issueTypeId)
       .maybeSingle();
 
-    if (issue) basePoints = issue.base_points;
+    if (issue) {
+      basePoints = issue.base_points;
+      const h = issue.resolution_time_hours ?? 24;
+      const m = issue.resolution_time_minutes ?? 0;
+      totalSlaMinutes = h * 60 + m;
+    }
   }
 
-  const slaDueAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  if (formHours !== null && formHours !== "") {
+    const h = parseInt(formHours as string, 10) || 0;
+    const m = parseInt((formMinutes as string) || "0", 10) || 0;
+    if (h > 0 || m > 0) {
+      totalSlaMinutes = h * 60 + m;
+    }
+  }
+
+  const slaDueAt = new Date(Date.now() + totalSlaMinutes * 60 * 1000).toISOString();
 
   // Override check: cancel any existing open site complaint for the same location & issue
   let existingQuery = adminClient

@@ -32,10 +32,20 @@ export default async function AdminLayout({
     .maybeSingle();
 
   const userRole = profile?.role || user.user_metadata?.role;
+  const adminRoles = ["admin", "hod", "line_manager", "supervisor"];
 
-  if (userRole !== "admin") {
+  if (!adminRoles.includes(userRole)) {
     redirect(userRole === "responder" ? "/responder" : "/dashboard");
   }
+
+  const roleLabel =
+    userRole === "admin"
+      ? "System Admin"
+      : userRole === "hod"
+      ? "HOD (Head of Dept)"
+      : userRole === "line_manager"
+      ? "Line Manager"
+      : "Field Supervisor";
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col md:flex-row">
@@ -52,14 +62,14 @@ export default async function AdminLayout({
                 Taj Care
               </h1>
               <span className="text-[10px] font-semibold tracking-wider text-emerald-400 uppercase">
-                Admin Control Panel
+                {userRole === "admin" ? "Super Admin Panel" : "Management Portal"}
               </span>
             </div>
           </div>
 
           {/* Navigation Links */}
           <div className="p-4">
-            <AdminNavLinks />
+            <AdminNavLinks userRole={userRole} />
           </div>
         </div>
 
@@ -75,7 +85,7 @@ export default async function AdminLayout({
                   {profile?.full_name}
                 </p>
                 <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
-                  <ShieldCheck className="w-3 h-3" /> System Admin
+                  <ShieldCheck className="w-3 h-3" /> {roleLabel}
                 </span>
               </div>
             </div>

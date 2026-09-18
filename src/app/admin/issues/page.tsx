@@ -3,9 +3,26 @@ import IssueModals from "./IssueModals";
 import IssuesTable from "./IssuesTable";
 import { AlertTriangle } from "lucide-react";
 import { PredefinedIssue } from "@/types/database";
+import { redirect } from "next/navigation";
 
 export default async function AdminIssuesPage() {
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    redirect("/admin");
+  }
 
   const { data: issuesData } = await supabase
     .from("predefined_issues")

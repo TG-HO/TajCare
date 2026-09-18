@@ -8,6 +8,8 @@ export async function createIssueAction(formData: FormData) {
   const issueTitle = formData.get("issue_title") as string;
   const complexity = formData.get("complexity") as string;
   const basePoints = parseInt((formData.get("base_points") as string) || "20", 10);
+  const resolutionHours = parseInt((formData.get("resolution_time_hours") as string) || "24", 10);
+  const resolutionMinutes = parseInt((formData.get("resolution_time_minutes") as string) || "0", 10);
 
   if (!category || !issueTitle || !complexity) {
     return { error: "Category, Issue Title, and Complexity are required." };
@@ -19,6 +21,8 @@ export async function createIssueAction(formData: FormData) {
     issue_title: issueTitle,
     complexity,
     base_points: basePoints,
+    resolution_time_hours: Math.max(0, resolutionHours),
+    resolution_time_minutes: Math.min(59, Math.max(0, resolutionMinutes)),
   });
 
   if (error) {
@@ -34,6 +38,8 @@ export async function updateIssueAction(id: string, formData: FormData) {
   const issueTitle = formData.get("issue_title") as string;
   const complexity = formData.get("complexity") as string;
   const basePoints = parseInt((formData.get("base_points") as string) || "20", 10);
+  const resolutionHours = parseInt((formData.get("resolution_time_hours") as string) || "24", 10);
+  const resolutionMinutes = parseInt((formData.get("resolution_time_minutes") as string) || "0", 10);
 
   if (!id || !category || !issueTitle || !complexity) {
     return { error: "Missing required fields." };
@@ -47,6 +53,8 @@ export async function updateIssueAction(id: string, formData: FormData) {
       issue_title: issueTitle,
       complexity,
       base_points: basePoints,
+      resolution_time_hours: Math.max(0, resolutionHours),
+      resolution_time_minutes: Math.min(59, Math.max(0, resolutionMinutes)),
     })
     .eq("id", id);
 

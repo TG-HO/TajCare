@@ -12,6 +12,9 @@ export async function createUserAction(formData: FormData) {
   const locationId = (formData.get("location_id") as string) || null;
   const rawLocationIds = formData.getAll("location_ids") as string[];
   const phoneNumber = (formData.get("phone_number") as string) || null;
+  const supervisorId = (formData.get("supervisor_id") as string) || null;
+  const lineManagerId = (formData.get("line_manager_id") as string) || null;
+  const hodId = (formData.get("hod_id") as string) || null;
 
   if (!fullName || !email || !password || !role) {
     return { error: "Full Name, Email, Password, and Role are required." };
@@ -50,6 +53,9 @@ export async function createUserAction(formData: FormData) {
     role,
     location_id: primaryLocationId,
     phone_number: phoneNumber || null,
+    supervisor_id: supervisorId ? supervisorId.trim() : null,
+    line_manager_id: lineManagerId ? lineManagerId.trim() : null,
+    hod_id: hodId ? hodId.trim() : null,
     updated_at: new Date().toISOString(),
   });
 
@@ -194,7 +200,10 @@ export async function updateResponderBindingAction(
   responderId: string,
   isOnLeave: boolean,
   backupResponderId: string | null,
-  locationIds: string[]
+  locationIds: string[],
+  supervisorId?: string | null,
+  lineManagerId?: string | null,
+  hodId?: string | null
 ) {
   try {
     const adminClient = createAdminClient();
@@ -215,13 +224,16 @@ export async function updateResponderBindingAction(
 
     const primaryLoc = locationIds && locationIds.length > 0 ? locationIds[0] : null;
 
-    // Update profile leave status, backup, and primary location
+    // Update profile leave status, backup, hierarchy reporting, and primary location
     const { error: profileError } = await adminClient
       .from("profiles")
       .update({
         is_on_leave: Boolean(isOnLeave),
         backup_responder_id: cleanBackupId,
         location_id: primaryLoc,
+        supervisor_id: supervisorId ? supervisorId.trim() : null,
+        line_manager_id: lineManagerId ? lineManagerId.trim() : null,
+        hod_id: hodId ? hodId.trim() : null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", responderId);

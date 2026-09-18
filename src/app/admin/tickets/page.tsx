@@ -18,21 +18,36 @@ export default async function AdminMasterTicketsPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "admin") {
+  const adminRoles = ["admin", "hod", "line_manager", "supervisor"];
+  if (!adminRoles.includes(profile?.role || "")) {
     redirect("/dashboard");
   }
 
-  // Fetch all tickets with full relations
-  const { data: ticketsData } = await supabase
+  const { getAssignedResponderIds } = await import("@/lib/hierarchy");
+  const assignedResponderIds = await getAssignedResponderIds(supabase, profile as Profile);
+  const isScoped = assignedResponderIds !== null;
+
+  // Fetch tickets with full relations
+  let ticketsQuery = supabase
     .from("tickets")
     .select(`
       *,
       complainant:profiles!complainant_id(full_name, email, phone_number, role),
       assigned_responder:profiles!assigned_responder_id(full_name, email, is_on_leave),
       location:locations!location_id(id, name, type, city),
-      issue_type:predefined_issues(id, issue_title, category, base_points)
+      issue_type:predefined_issues(id, issue_title, category, base_points, resolution_time_hours, resolution_time_minutes)
     `)
     .order("created_at", { ascending: false });
+
+  if (isScoped) {
+    if (assignedResponderIds.length > 0) {
+      ticketsQuery = ticketsQuery.in("assigned_responder_id", assignedResponderIds);
+    } else {
+      ticketsQuery = ticketsQuery.eq("assigned_responder_id", "00000000-0000-0000-0000-000000000000");
+    }
+  }
+
+  const { data: ticketsData } = await ticketsQuery;
 
   // Fetch ticket logs for full history
   const { data: logsData } = await supabase
@@ -48,13 +63,24 @@ export default async function AdminMasterTicketsPage() {
 
   // Fetch locations and responders for filter dropdowns
   const { data: locationsData } = await supabase.from("locations").select("*").order("name");
-  const { data: respondersData } = await supabase.from("profiles").select("*").eq("role", "responder");
+
+  let respondersQuery = supabase.from("profiles").select("*").eq("role", "responder");
+  if (isScoped) {
+    if (assignedResponderIds.length > 0) {
+      respondersQuery = respondersQuery.in("id", assignedResponderIds);
+    } else {
+      respondersQuery = respondersQuery.eq("id", "00000000-0000-0000-0000-000000000000");
+    }
+  }
+  const { data: respondersData } = await respondersQuery;
 
   return (
     <MasterTicketsClient
       tickets={tickets}
       locations={(locationsData as Location[]) || []}
       responders={(respondersData as Profile[]) || []}
+      userRole={profile?.role || "admin"}
+      isScoped={isScoped}
     />
   );
 }

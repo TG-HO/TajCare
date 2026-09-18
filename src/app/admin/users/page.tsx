@@ -2,17 +2,38 @@ import { createClient } from "@/lib/supabase/server";
 import { Users } from "lucide-react";
 import { Location, Profile } from "@/types/database";
 import UsersPageClient from "./UsersPageClient";
+import { redirect } from "next/navigation";
 
 export default async function AdminUsersPage() {
   const supabase = await createClient();
 
-  // Fetch users with primary location and backup responder
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const { data: currentProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  // Complete Admin Panel (User Management) is restricted to Super Admin only
+  if (currentProfile?.role !== "admin") {
+    redirect("/admin");
+  }
+
+  // Fetch users with primary location, backup responder, and reporting hierarchy
   const { data: usersData } = await supabase
     .from("profiles")
     .select(`
       *,
       location:locations!location_id(*),
-      backup_responder:profiles!backup_responder_id(full_name)
+      backup_responder:profiles!backup_responder_id(full_name),
+      supervisor:profiles!supervisor_id(full_name),
+      line_manager:profiles!line_manager_id(full_name),
+      hod:profiles!hod_id(full_name)
     `)
     .order("created_at", { ascending: false });
 

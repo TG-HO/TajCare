@@ -19,7 +19,7 @@ export default async function AdminAnalyticsPage() {
     .single();
 
   if (profile?.role !== "admin") {
-    redirect("/dashboard");
+    redirect("/admin");
   }
 
   // Fetch all tickets with relations

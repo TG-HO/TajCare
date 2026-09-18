@@ -163,7 +163,8 @@ export async function loginAction(formData: FormData) {
     const role = profile?.role || user.user_metadata?.role;
 
     let targetPath = "/dashboard";
-    if (role === "admin") {
+    const adminRoles = ["admin", "hod", "line_manager", "supervisor"];
+    if (adminRoles.includes(role)) {
       targetPath = "/admin";
     } else if (role === "responder") {
       targetPath = "/responder";

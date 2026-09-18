@@ -13,52 +13,63 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-export default function AdminNavLinks() {
+export default function AdminNavLinks({ userRole = "admin" }: { userRole?: string }) {
   const pathname = usePathname();
+  const isSuperAdmin = userRole === "admin";
 
-  const links = [
+  const allLinks = [
     {
       name: "Dashboard Overview",
       href: "/admin",
       icon: LayoutDashboard,
       exact: true,
+      superAdminOnly: false,
     },
     {
       name: "Master Tickets Monitor",
       href: "/admin/tickets",
       icon: Ticket,
+      superAdminOnly: false,
     },
     {
       name: "Operational Tasks",
       href: "/admin/tasks",
       icon: CheckCircle2,
+      superAdminOnly: false,
     },
     {
       name: "User Management",
       href: "/admin/users",
       icon: Users,
+      superAdminOnly: true,
     },
     {
       name: "Locations & Sites",
       href: "/admin/locations",
       icon: MapPin,
+      superAdminOnly: true,
     },
     {
       name: "Predefined Issues",
       href: "/admin/issues",
       icon: AlertTriangle,
+      superAdminOnly: true,
     },
     {
       name: "Performance Analytics",
       href: "/admin/analytics",
       icon: BarChart3,
+      superAdminOnly: true,
     },
     {
       name: "Monthly Leaderboard",
       href: "/leaderboard",
       icon: Trophy,
+      superAdminOnly: false,
     },
   ];
+
+  const links = allLinks.filter((link) => isSuperAdmin || !link.superAdminOnly);
 
   return (
     <nav className="space-y-1">

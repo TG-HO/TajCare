@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkAndProcessEscalations } from "@/lib/escalation/service";
 
 export async function GET() {
   try {
@@ -19,10 +20,14 @@ export async function GET() {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
 
+    const escalationResult = await checkAndProcessEscalations();
+
     if (!breachedTickets || breachedTickets.length === 0) {
       return NextResponse.json({
-        message: "No SLA breaches detected.",
-        processedCount: 0,
+        success: true,
+        message: `No 24h SLA breaches. Processed ${escalationResult.escalatedCount} escalation(s).`,
+        processedBreaches: 0,
+        escalations: escalationResult,
       });
     }
 
@@ -52,11 +57,14 @@ export async function GET() {
 
     await adminClient.from("ticket_logs").insert(logRows);
 
+    // Response SLAs already evaluated above
+
     return NextResponse.json({
       success: true,
-      message: `Successfully processed ${breachedTickets.length} SLA breach(es).`,
-      processedCount: breachedTickets.length,
-      tickets: breachedTickets.map((t) => `#${t.ticket_number}`),
+      message: `Processed ${breachedTickets.length} SLA breach(es) and ${escalationResult.escalatedCount} escalation(s).`,
+      processedBreaches: breachedTickets.length,
+      breachedTickets: breachedTickets.map((t) => `#${t.ticket_number}`),
+      escalations: escalationResult,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

@@ -18,7 +18,8 @@ export default async function HomePage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role === "admin") {
+  const adminRoles = ["admin", "hod", "line_manager", "supervisor"];
+  if (adminRoles.includes(profile?.role || "")) {
     redirect("/admin");
   } else if (profile?.role === "responder") {
     redirect("/responder");

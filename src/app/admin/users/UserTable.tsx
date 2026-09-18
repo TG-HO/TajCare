@@ -71,10 +71,13 @@ export default function UserTable({
             className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-[#0F172A] focus:outline-none"
           >
             <option value="all">All Roles ({initialUsers.length})</option>
-            <option value="employee">Employees</option>
-            <option value="site_manager">Site Managers</option>
+            <option value="admin">System Admin</option>
+            <option value="hod">HOD</option>
+            <option value="line_manager">Line Manager</option>
+            <option value="supervisor">Supervisor</option>
             <option value="responder">Responders</option>
-            <option value="admin">Admins</option>
+            <option value="site_manager">Site Managers</option>
+            <option value="employee">Employees</option>
           </select>
         </div>
       </div>
@@ -86,7 +89,7 @@ export default function UserTable({
             <thead className="bg-slate-100/80 text-slate-700 font-bold uppercase tracking-wider border-b border-slate-200">
               <tr>
                 <th className="p-4">User</th>
-                <th className="p-4">Role</th>
+                <th className="p-4">Role & Hierarchy</th>
                 <th className="p-4">Primary Location</th>
                 <th className="p-4">Responder Bindings / Status</th>
                 <th className="p-4">Joined</th>
@@ -119,13 +122,33 @@ export default function UserTable({
                     </td>
 
                     <td className="p-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${getRoleBadgeColor(
-                          user.role
-                        )}`}
-                      >
-                        {user.role}
-                      </span>
+                      <div>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${getRoleBadgeColor(
+                            user.role
+                          )}`}
+                        >
+                          {user.role === "admin"
+                            ? "Super Admin"
+                            : user.role === "hod"
+                            ? "HOD"
+                            : user.role === "line_manager"
+                            ? "Line Manager"
+                            : user.role === "supervisor"
+                            ? "Supervisor"
+                            : user.role}
+                        </span>
+                        {user.supervisor && (
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Sup: <span className="font-semibold text-slate-700">{user.supervisor.full_name}</span>
+                          </p>
+                        )}
+                        {user.line_manager && (
+                          <p className="text-[10px] text-slate-400">
+                            LM: <span className="font-medium text-slate-600">{user.line_manager.full_name}</span>
+                          </p>
+                        )}
+                      </div>
                     </td>
 
                     <td className="p-4">

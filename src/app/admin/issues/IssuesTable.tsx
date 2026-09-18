@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { PredefinedIssue } from "@/types/database";
 import { getComplexityBadgeColor } from "@/lib/utils";
-import { Search, Filter, AlertTriangle, Award, Edit, Trash2 } from "lucide-react";
+import { Search, Filter, AlertTriangle, Award, Edit, Trash2, Clock } from "lucide-react";
 import { deleteIssueAction } from "./actions";
 import { toast } from "sonner";
 import IssueModals from "./IssueModals";
@@ -95,6 +95,7 @@ export default function IssuesTable({
                 <th className="p-4">Issue Category</th>
                 <th className="p-4">Issue Title</th>
                 <th className="p-4">Complexity</th>
+                <th className="p-4">Resolution SLA</th>
                 <th className="p-4">Base SLA Points</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
@@ -102,7 +103,7 @@ export default function IssuesTable({
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredIssues.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-400">
+                  <td colSpan={6} className="p-8 text-center text-slate-400">
                     No predefined issues found.
                   </td>
                 </tr>
@@ -127,6 +128,13 @@ export default function IssuesTable({
                       >
                         {issue.complexity}
                       </span>
+                    </td>
+
+                    <td className="p-4">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-lg text-xs font-semibold">
+                        <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                        {issue.resolution_time_hours ?? 24}h {issue.resolution_time_minutes ?? 0}m
+                      </div>
                     </td>
 
                     <td className="p-4">

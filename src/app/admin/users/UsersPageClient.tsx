@@ -21,6 +21,7 @@ export default function UsersPageClient({
       <UserModals
         locations={locations}
         responders={responders}
+        allUsers={users}
         responderToEdit={responderToEdit}
         onResponderEditClose={() => setResponderToEdit(null)}
       />

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import RefreshButton from "@/components/RefreshButton";
 import AdminTaskClient from "./AdminTaskClient";
+import { Profile } from "@/types/database";
 
 export default async function AdminTasksPage() {
   const supabase = await createClient();
@@ -21,19 +22,34 @@ export default async function AdminTasksPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "admin") {
+  const adminRoles = ["admin", "hod", "line_manager", "supervisor"];
+  if (!adminRoles.includes(profile?.role)) {
     redirect("/dashboard");
   }
+
+  const { getAssignedResponderIds } = await import("@/lib/hierarchy");
+  const assignedResponderIds = await getAssignedResponderIds(supabase, profile as Profile);
+  const isScoped = assignedResponderIds !== null;
 
   // Fetch locations
   const { data: locations } = await supabase.from("locations").select("*").order("name");
 
   // Fetch responders
-  const { data: responders } = await supabase
+  let responderQuery = supabase
     .from("profiles")
     .select("*")
     .eq("role", "responder")
     .order("full_name");
+
+  if (isScoped) {
+    if (assignedResponderIds.length > 0) {
+      responderQuery = responderQuery.in("id", assignedResponderIds);
+    } else {
+      responderQuery = responderQuery.eq("id", "00000000-0000-0000-0000-000000000000");
+    }
+  }
+
+  const { data: responders } = await responderQuery;
 
   // Fetch tasks
   const { data: tasksData } = await supabase
@@ -48,7 +64,13 @@ export default async function AdminTasksPage() {
     `)
     .order("created_at", { ascending: false });
 
-  const tasks = tasksData || [];
+  let tasks = tasksData || [];
+  if (isScoped) {
+    tasks = tasks.filter((t) => {
+      const assigneeIds = t.task_assignees?.map((ta: any) => ta.responder?.id).filter(Boolean) || [];
+      return assigneeIds.some((id: string) => assignedResponderIds.includes(id));
+    });
+  }
 
   return (
     <div className="space-y-6 p-8 max-w-7xl mx-auto">

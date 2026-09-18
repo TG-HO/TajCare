@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Location, Profile, PredefinedIssue } from "@/types/database";
 import { adminCreateTicketAction } from "@/app/tickets/actions";
 import { toast } from "sonner";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, Clock } from "lucide-react";
 import SearchableLocationSelect from "@/components/SearchableLocationSelect";
 import { useRouter } from "next/navigation";
 
@@ -24,6 +24,21 @@ export default function AdminTicketCreateForm({
   const [issueTypeId, setIssueTypeId] = useState(issues[0]?.id || "");
   const [customTitle, setCustomTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [resolutionHours, setResolutionHours] = useState<number>(
+    issues[0]?.resolution_time_hours ?? 24
+  );
+  const [resolutionMinutes, setResolutionMinutes] = useState<number>(
+    issues[0]?.resolution_time_minutes ?? 0
+  );
+
+  function handleIssueChange(id: string) {
+    setIssueTypeId(id);
+    const selected = issues.find((iss) => iss.id === id);
+    if (selected) {
+      setResolutionHours(selected.resolution_time_hours ?? 24);
+      setResolutionMinutes(selected.resolution_time_minutes ?? 0);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,6 +52,8 @@ export default function AdminTicketCreateForm({
     formData.append("location_id", locationId);
     formData.append("assigned_responder_id", responderId);
     formData.append("issue_type_id", issueTypeId);
+    formData.append("custom_resolution_hours", String(resolutionHours));
+    formData.append("custom_resolution_minutes", String(resolutionMinutes));
     if (issueTypeId === "OTHER") {
       formData.append("custom_issue_title", customTitle);
     }
@@ -91,16 +108,67 @@ export default function AdminTicketCreateForm({
         </label>
         <select
           value={issueTypeId}
-          onChange={(e) => setIssueTypeId(e.target.value)}
+          onChange={(e) => handleIssueChange(e.target.value)}
           className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-purple-600 focus:outline-none"
         >
           {issues.map((iss) => (
             <option key={iss.id} value={iss.id}>
-              [{iss.category}] {iss.issue_title} ({iss.complexity} • {iss.base_points} pts)
+              [{iss.category}] {iss.issue_title} ({iss.complexity} • {iss.base_points} pts • {iss.resolution_time_hours ?? 24}h {iss.resolution_time_minutes ?? 0}m SLA)
             </option>
           ))}
           <option value="OTHER">Other Custom Issue</option>
         </select>
+      </div>
+
+      {/* Target Resolution Time SLA */}
+      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="font-bold text-[#0F172A] uppercase flex items-center gap-1.5">
+            <Clock className="w-4 h-4 text-purple-600" />
+            Target Resolution Time (SLA)
+          </label>
+          <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+            {resolutionHours}h {resolutionMinutes}m duration
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+              Hours
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                max={720}
+                value={resolutionHours}
+                onChange={(e) => setResolutionHours(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-[#0F172A] focus:ring-2 focus:ring-purple-600 focus:outline-none pr-8"
+              />
+              <span className="absolute right-2.5 top-2.5 text-xs text-slate-400 pointer-events-none">
+                hrs
+              </span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+              Minutes
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                max={59}
+                value={resolutionMinutes}
+                onChange={(e) => setResolutionMinutes(Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-[#0F172A] focus:ring-2 focus:ring-purple-600 focus:outline-none pr-8"
+              />
+              <span className="absolute right-2.5 top-2.5 text-xs text-slate-400 pointer-events-none">
+                mins
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {issueTypeId === "OTHER" && (

@@ -1,4 +1,11 @@
-export type Role = 'employee' | 'site_manager' | 'responder' | 'admin';
+export type Role =
+  | 'employee'
+  | 'site_manager'
+  | 'responder'
+  | 'supervisor'
+  | 'line_manager'
+  | 'hod'
+  | 'admin';
 export type LocationType = 'head_office' | 'fueling_site';
 export type Complexity = 'Low' | 'Medium' | 'High' | 'Critical';
 export type TicketStatus =
@@ -45,11 +52,17 @@ export interface Profile {
   phone_number?: string | null;
   is_on_leave?: boolean;
   backup_responder_id?: string | null;
+  supervisor_id?: string | null;
+  line_manager_id?: string | null;
+  hod_id?: string | null;
   created_at?: string;
   updated_at?: string;
   // Joined relation fields
   location?: Location | null;
   backup_responder?: Profile | null;
+  supervisor?: Profile | null;
+  line_manager?: Profile | null;
+  hod?: Profile | null;
   responder_locations?: Location[];
 }
 
@@ -59,6 +72,8 @@ export interface PredefinedIssue {
   issue_title: string;
   complexity: Complexity;
   base_points: number;
+  resolution_time_hours?: number;
+  resolution_time_minutes?: number;
   target_location_type?: 'fueling_site' | 'head_office' | 'both';
   created_at?: string;
 }
@@ -104,6 +119,8 @@ export interface Ticket {
   attachments?: string[];
   sla_due_at?: string;
   sla_breached?: boolean;
+  escalation_level?: number;
+  last_escalated_at?: string | null;
   reopened_count?: number;
   closed_at?: string | null;
   created_at?: string;

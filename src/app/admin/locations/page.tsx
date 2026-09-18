@@ -3,9 +3,26 @@ import LocationModals from "./LocationModals";
 import LocationsTable from "./LocationsTable";
 import { MapPin } from "lucide-react";
 import { Location } from "@/types/database";
+import { redirect } from "next/navigation";
 
 export default async function AdminLocationsPage() {
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    redirect("/admin");
+  }
 
   const { data: locationsData } = await supabase
     .from("locations")

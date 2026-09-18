@@ -52,7 +52,9 @@ export async function middleware(request: NextRequest) {
 
     const role = profile?.role || user.user_metadata?.role;
 
-    if (role !== "admin") {
+    const adminRoles = ["admin", "hod", "line_manager", "supervisor"];
+
+    if (!adminRoles.includes(role)) {
       const url = request.nextUrl.clone();
       if (role === "responder") {
         url.pathname = "/responder";
@@ -72,9 +74,10 @@ export async function middleware(request: NextRequest) {
       .maybeSingle();
 
     const role = profile?.role || user.user_metadata?.role;
+    const adminRoles = ["admin", "hod", "line_manager", "supervisor"];
 
     const url = request.nextUrl.clone();
-    if (role === "admin") {
+    if (adminRoles.includes(role)) {
       url.pathname = "/admin";
     } else if (role === "responder") {
       url.pathname = "/responder";

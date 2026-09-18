@@ -24,11 +24,13 @@ import { Location, Profile } from "@/types/database";
 export default function UserModals({
   locations,
   responders,
+  allUsers = [],
   responderToEdit,
   onResponderEditClose,
 }: {
   locations: Location[];
   responders: Profile[];
+  allUsers?: Profile[];
   responderToEdit?: Profile | null;
   onResponderEditClose?: () => void;
 }) {
@@ -50,13 +52,23 @@ export default function UserModals({
   const [isOnLeave, setIsOnLeave] = useState(false);
   const [backupResponderId, setBackupResponderId] = useState<string>("");
   const [boundLocationIds, setBoundLocationIds] = useState<string[]>([]);
+  const [editSupervisorId, setEditSupervisorId] = useState<string>("");
+  const [editLineManagerId, setEditLineManagerId] = useState<string>("");
+  const [editHodId, setEditHodId] = useState<string>("");
   const [responderLoading, setResponderLoading] = useState(false);
+
+  const supervisors = (allUsers || []).filter((u) => u.role === "supervisor");
+  const lineManagers = (allUsers || []).filter((u) => u.role === "line_manager");
+  const hods = (allUsers || []).filter((u) => u.role === "hod");
 
   // Sync state when responderToEdit changes from parent
   useEffect(() => {
     if (responderToEdit) {
       setIsOnLeave(responderToEdit.is_on_leave || false);
       setBackupResponderId(responderToEdit.backup_responder_id || "");
+      setEditSupervisorId(responderToEdit.supervisor_id || "");
+      setEditLineManagerId(responderToEdit.line_manager_id || "");
+      setEditHodId(responderToEdit.hod_id || "");
       const existingLocIds =
         responderToEdit.responder_locations?.map((l) => l.id) || [];
       setBoundLocationIds(existingLocIds);
@@ -134,7 +146,10 @@ export default function UserModals({
         responderToEdit.id,
         isOnLeave,
         isOnLeave ? (backupResponderId || null) : null,
-        boundLocationIds
+        boundLocationIds,
+        editSupervisorId || null,
+        editLineManagerId || null,
+        editHodId || null
       );
       setResponderLoading(false);
 
@@ -255,7 +270,10 @@ export default function UserModals({
                     <option value="employee">Employee</option>
                     <option value="site_manager">Site Manager</option>
                     <option value="responder">IT Responder</option>
-                    <option value="admin">System Admin</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="line_manager">Line Manager</option>
+                    <option value="hod">Head of Department (HOD)</option>
+                    <option value="admin">System Admin (Super Admin)</option>
                   </select>
                 </div>
 
@@ -276,6 +294,77 @@ export default function UserModals({
                   </select>
                 </div>
               </div>
+
+              {/* Hierarchy Assignment for Responders, Supervisors, and Line Managers */}
+              {(selectedRole === "responder" || selectedRole === "supervisor" || selectedRole === "line_manager") && (
+                <div className="p-3 bg-indigo-50/50 border border-indigo-200 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-indigo-900 uppercase">
+                      Reporting Hierarchy (Escalation Chain)
+                    </label>
+                    <span className="text-[10px] text-indigo-600 font-medium">
+                      Responder → Supervisor → Line Manager → HOD
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    {selectedRole === "responder" && (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Direct Supervisor
+                        </label>
+                        <select
+                          name="supervisor_id"
+                          className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs"
+                        >
+                          <option value="">-- None / Direct --</option>
+                          {supervisors.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {(selectedRole === "responder" || selectedRole === "supervisor") && (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Line Manager
+                        </label>
+                        <select
+                          name="line_manager_id"
+                          className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs"
+                        >
+                          <option value="">-- None / Direct --</option>
+                          {lineManagers.map((lm) => (
+                            <option key={lm.id} value={lm.id}>
+                              {lm.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        HOD (Department Head)
+                      </label>
+                      <select
+                        name="hod_id"
+                        className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs"
+                      >
+                        <option value="">-- None / Default --</option>
+                        {hods.map((h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {selectedRole === "responder" && (
                 <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
@@ -506,6 +595,74 @@ export default function UserModals({
                     </select>
                   </div>
                 )}
+              </div>
+
+              {/* Hierarchy Reporting / Escalation Chain */}
+              <div className="p-3 bg-indigo-50/60 border border-indigo-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-indigo-900 uppercase">
+                    Reporting Hierarchy (Escalation Chain)
+                  </label>
+                  <span className="text-[10px] text-indigo-600 font-medium">
+                    Responder → Supervisor → Line Manager → HOD
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Direct Supervisor
+                    </label>
+                    <select
+                      value={editSupervisorId}
+                      onChange={(e) => setEditSupervisorId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs"
+                    >
+                      <option value="">-- None / Unassigned --</option>
+                      {supervisors.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Line Manager
+                    </label>
+                    <select
+                      value={editLineManagerId}
+                      onChange={(e) => setEditLineManagerId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs"
+                    >
+                      <option value="">-- None / Direct --</option>
+                      {lineManagers.map((lm) => (
+                        <option key={lm.id} value={lm.id}>
+                          {lm.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      HOD (Head of Dept)
+                    </label>
+                    <select
+                      value={editHodId}
+                      onChange={(e) => setEditHodId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs"
+                    >
+                      <option value="">-- None / Default --</option>
+                      {hods.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
               {/* Multi-Location Bindings */}
