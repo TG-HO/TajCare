@@ -74,6 +74,12 @@ export interface PredefinedIssue {
   base_points: number;
   resolution_time_hours?: number;
   resolution_time_minutes?: number;
+  responder_response_hours?: number;
+  responder_response_minutes?: number;
+  supervisor_response_hours?: number;
+  supervisor_response_minutes?: number;
+  line_manager_response_hours?: number;
+  line_manager_response_minutes?: number;
   target_location_type?: 'fueling_site' | 'head_office' | 'both';
   created_at?: string;
 }

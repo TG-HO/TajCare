@@ -96,6 +96,7 @@ export default function IssuesTable({
                 <th className="p-4">Issue Title</th>
                 <th className="p-4">Complexity</th>
                 <th className="p-4">Resolution SLA</th>
+                <th className="p-4">Hierarchy Response SLA</th>
                 <th className="p-4">Base SLA Points</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
@@ -103,7 +104,7 @@ export default function IssuesTable({
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredIssues.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
+                  <td colSpan={7} className="p-8 text-center text-slate-400">
                     No predefined issues found.
                   </td>
                 </tr>
@@ -134,6 +135,19 @@ export default function IssuesTable({
                       <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-lg text-xs font-semibold">
                         <Clock className="w-3.5 h-3.5 text-indigo-600" />
                         {issue.resolution_time_hours ?? 24}h {issue.resolution_time_minutes ?? 0}m
+                      </div>
+                    </td>
+
+                    <td className="p-4">
+                      <div className="flex flex-col gap-0.5 text-[11px]">
+                        <div className="flex items-center gap-1 text-slate-800 font-medium">
+                          <span className="font-bold text-blue-600">Resp:</span> {issue.responder_response_hours ?? 2}h {issue.responder_response_minutes ?? 0}m
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-500 text-[10px]">
+                          <span><strong className="text-amber-600">Sup:</strong> {issue.supervisor_response_hours ?? 2}h {issue.supervisor_response_minutes ?? 0}m</span>
+                          <span className="text-slate-300">•</span>
+                          <span><strong className="text-purple-600">LM:</strong> {issue.line_manager_response_hours ?? 2}h {issue.line_manager_response_minutes ?? 0}m</span>
+                        </div>
                       </div>
                     </td>
 

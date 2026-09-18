@@ -24,6 +24,7 @@ import Link from "next/link";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import ImageLightboxModal from "@/components/ImageLightboxModal";
 import RefreshButton from "@/components/RefreshButton";
+import TicketResponseTimer from "@/components/TicketResponseTimer";
 
 export default function ResponderClient({
   profile,
@@ -257,9 +258,12 @@ export default function ResponderClient({
                       )}
                   </div>
 
-                  <span className="text-[11px] text-slate-400">
-                    Location: <strong>{ticket.location?.name}</strong>
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <TicketResponseTimer ticket={ticket} isResponderView={true} />
+                    <span className="text-[11px] text-slate-400">
+                      Location: <strong>{ticket.location?.name}</strong>
+                    </span>
+                  </div>
                 </div>
 
                 {/* Body */}

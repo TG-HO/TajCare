@@ -35,7 +35,7 @@ export default async function AdminMasterTicketsPage() {
       complainant:profiles!complainant_id(full_name, email, phone_number, role),
       assigned_responder:profiles!assigned_responder_id(full_name, email, is_on_leave),
       location:locations!location_id(id, name, type, city),
-      issue_type:predefined_issues(id, issue_title, category, base_points, resolution_time_hours, resolution_time_minutes)
+      issue_type:predefined_issues(*)
     `)
     .order("created_at", { ascending: false });
 

@@ -23,6 +23,7 @@ import {
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import TicketResponseTimer from "@/components/TicketResponseTimer";
 
 export default function MasterTicketsClient({
   tickets,
@@ -408,6 +409,11 @@ export default function MasterTicketsClient({
                               <span>Target: {issue.resolution_time_hours ?? 24}h {issue.resolution_time_minutes ?? 0}m</span>
                             </div>
                           )}
+
+                          {/* Live Response SLA Countdown */}
+                          <div>
+                            <TicketResponseTimer ticket={t} />
+                          </div>
 
                           {/* Breach or On-Time Status */}
                           {t.sla_breached ? (

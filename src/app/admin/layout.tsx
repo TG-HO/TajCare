@@ -48,12 +48,12 @@ export default async function AdminLayout({
       : "Field Supervisor";
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col md:flex-row">
-      {/* Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-[#0F172A] text-white flex-shrink-0 flex flex-col justify-between border-r border-slate-800">
-        <div>
+    <div className="h-screen w-full overflow-hidden bg-[#F8FAFC] flex flex-col md:flex-row">
+      {/* Sidebar Navigation - Fixed Completely */}
+      <aside className="w-full md:w-64 h-auto md:h-screen bg-[#0F172A] text-white flex-shrink-0 flex flex-col justify-between border-r border-slate-800 z-20">
+        <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
           {/* Logo Header */}
-          <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+          <div className="p-6 border-b border-slate-800 flex items-center gap-3 flex-shrink-0">
             <div className="w-10 h-10 rounded-xl bg-emerald-500 text-[#0F172A] flex items-center justify-center font-bold shadow-md shadow-emerald-500/20">
               <Fuel className="w-6 h-6" />
             </div>
@@ -68,13 +68,13 @@ export default async function AdminLayout({
           </div>
 
           {/* Navigation Links */}
-          <div className="p-4">
+          <div className="p-4 flex-1">
             <AdminNavLinks userRole={userRole} />
           </div>
         </div>
 
         {/* User Info & Sign Out Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/50">
+        <div className="p-4 border-t border-slate-800 bg-slate-900/50 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5 overflow-hidden">
               <div className="w-8 h-8 rounded-full bg-emerald-500 text-[#0F172A] flex items-center justify-center font-bold text-xs flex-shrink-0">
@@ -103,10 +103,10 @@ export default async function AdminLayout({
         </div>
       </aside>
 
-      {/* Main Admin Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Main Admin Area - Scrollable Content Only */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Navbar */}
-        <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between shadow-sm">
+        <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between shadow-sm flex-shrink-0 z-10">
           <div>
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Taj Gasoline IT Operations
@@ -126,8 +126,10 @@ export default async function AdminLayout({
           </div>
         </header>
 
-        {/* Page Body */}
-        <main className="flex-1 p-8 overflow-y-auto">{children}</main>
+        {/* Page Body - Independently Scrollable */}
+        <main className="flex-1 p-8 overflow-y-auto min-h-0 bg-[#F8FAFC]">
+          {children}
+        </main>
       </div>
     </div>
   );

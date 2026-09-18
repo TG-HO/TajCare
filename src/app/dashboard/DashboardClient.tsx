@@ -23,6 +23,7 @@ import ImageLightboxModal from "@/components/ImageLightboxModal";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import RefreshButton from "@/components/RefreshButton";
 import { permanentlyCloseExpiredTicketsAction } from "@/app/tickets/actions";
+import TicketResponseTimer from "@/components/TicketResponseTimer";
 
 export default function DashboardClient({
   profile,
@@ -231,9 +232,12 @@ export default function DashboardClient({
                       )}
                   </div>
 
-                  <span className="text-[11px] text-slate-400">
-                    Logged: {formatDate(ticket.created_at)}
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <TicketResponseTimer ticket={ticket} />
+                    <span className="text-[11px] text-slate-400">
+                      Logged: {formatDate(ticket.created_at)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

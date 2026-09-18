@@ -43,22 +43,38 @@ export default async function AdminDashboardPage() {
     .in("status", ["Awaiting Admin Approval", "Issue Resolved"])
     .order("updated_at", { ascending: false });
 
+  let pendingTicketsQuery = supabase
+    .from("tickets")
+    .select(`
+      *,
+      location:locations(*),
+      issue_type:predefined_issues(*),
+      complainant:profiles!complainant_id(*),
+      assigned_responder:profiles!assigned_responder_id(*)
+    `)
+    .eq("status", "Pending")
+    .order("created_at", { ascending: true })
+    .limit(8);
+
   if (isScopedRole) {
     if (assignedResponderIds.length > 0) {
       ticketsQuery = ticketsQuery.in("assigned_responder_id", assignedResponderIds);
+      pendingTicketsQuery = pendingTicketsQuery.in("assigned_responder_id", assignedResponderIds);
     } else {
       // No assigned responders yet -> show empty
       ticketsQuery = ticketsQuery.eq("assigned_responder_id", "00000000-0000-0000-0000-000000000000");
+      pendingTicketsQuery = pendingTicketsQuery.eq("assigned_responder_id", "00000000-0000-0000-0000-000000000000");
     }
   }
 
-  // Fetch parallel stats & tickets awaiting rating approval
+  // Fetch parallel stats, awaiting rating approval, and pending response tickets
   const [
     { count: totalUsers },
     { count: responderCount },
     { count: locationCount },
     { count: issueCount },
     { data: awaitingApprovalData },
+    { data: pendingTicketsData },
     { data: recentTasksData },
   ] = await Promise.all([
     supabase.from("profiles").select("*", { count: "exact", head: true }),
@@ -68,6 +84,7 @@ export default async function AdminDashboardPage() {
     supabase.from("locations").select("*", { count: "exact", head: true }),
     supabase.from("predefined_issues").select("*", { count: "exact", head: true }),
     ticketsQuery,
+    pendingTicketsQuery,
     supabase
       .from("tasks")
       .select(`
@@ -81,6 +98,7 @@ export default async function AdminDashboardPage() {
   ]);
 
   const awaitingApprovalTickets = (awaitingApprovalData || []) as unknown as Ticket[];
+  const pendingTickets = (pendingTicketsData || []) as unknown as Ticket[];
   const recentTasks = (recentTasksData || []) as unknown as Task[];
 
   return (
@@ -90,6 +108,7 @@ export default async function AdminDashboardPage() {
       locationCount={locationCount || 0}
       issueCount={issueCount || 0}
       awaitingApprovalTickets={awaitingApprovalTickets}
+      pendingTickets={pendingTickets}
       recentTasks={recentTasks}
       userRole={userRole}
       isScopedRole={isScopedRole}

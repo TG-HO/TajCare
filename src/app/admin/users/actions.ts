@@ -63,16 +63,14 @@ export async function createUserAction(formData: FormData) {
     return { error: `Profile Error: ${profileError.message}` };
   }
 
-  // If role is responder or location bindings provided, insert into responder_locations
-  if (role === "responder" || allLocationIds.length > 0) {
-    if (allLocationIds.length > 0) {
-      const bindingRows = allLocationIds.map((locId) => ({
-        responder_id: userId,
-        location_id: locId,
-      }));
+  // Only users with role 'responder' should ever be bound in responder_locations
+  if (role === "responder" && allLocationIds.length > 0) {
+    const bindingRows = allLocationIds.map((locId) => ({
+      responder_id: userId,
+      location_id: locId,
+    }));
 
-      await adminClient.from("responder_locations").upsert(bindingRows, { onConflict: "responder_id,location_id" });
-    }
+    await adminClient.from("responder_locations").upsert(bindingRows, { onConflict: "responder_id,location_id" });
   }
 
   revalidatePath("/admin/users");

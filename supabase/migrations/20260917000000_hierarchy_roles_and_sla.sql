@@ -22,14 +22,24 @@ CREATE INDEX IF NOT EXISTS idx_profiles_line_manager_id ON profiles(line_manager
 CREATE INDEX IF NOT EXISTS idx_profiles_hod_id ON profiles(hod_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
 
--- 3. ADD SLA RESOLUTION DURATION TO PREDEFINED ISSUES
--- Stores the resolution time duration in hours and minutes
-ALTER TABLE predefined_issues
+-- 3. ENSURE PREDEFINED ISSUES TABLE EXISTS & ADD SLA RESOLUTION DURATION
+CREATE TABLE IF NOT EXISTS public.predefined_issues (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category TEXT NOT NULL,
+    issue_title TEXT NOT NULL,
+    complexity TEXT NOT NULL CHECK (complexity IN ('Low', 'Medium', 'High', 'Critical')) DEFAULT 'Medium',
+    base_points INT NOT NULL DEFAULT 20,
+    resolution_time_hours INT NOT NULL DEFAULT 24,
+    resolution_time_minutes INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.predefined_issues
   ADD COLUMN IF NOT EXISTS resolution_time_hours INT NOT NULL DEFAULT 24,
   ADD COLUMN IF NOT EXISTS resolution_time_minutes INT NOT NULL DEFAULT 0;
 
 -- Backfill existing predefined issues with standard operational durations
-UPDATE predefined_issues SET 
+UPDATE public.predefined_issues SET 
   resolution_time_hours = CASE 
     WHEN complexity = 'Critical' THEN 2
     WHEN complexity = 'High' THEN 12

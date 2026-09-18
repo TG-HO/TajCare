@@ -79,17 +79,20 @@ export async function createTicketAction(formData: FormData) {
 
   const slaDueAt = new Date(Date.now() + totalSlaMinutes * 60 * 1000).toISOString();
   let assignedResponderId: string | null = null;
+  const adminClient = createAdminClient();
 
-  const { data: bindings } = await supabase
+  // 1. Check responder_locations bindings for this location
+  const { data: bindings } = await adminClient
     .from("responder_locations")
-    .select("responder_id, responder:profiles!responder_id(id, is_on_leave, backup_responder_id)")
+    .select("responder_id, responder:profiles!responder_id(id, full_name, role, is_on_leave, backup_responder_id)")
     .eq("location_id", locationId);
 
   if (bindings && bindings.length > 0) {
     for (const b of bindings) {
       const resp = b.responder as any;
-      if (resp) {
-        if (resp.is_on_leave && resp.backup_responder_id) {
+      // Must have role 'responder' and MUST NOT be the complainant themselves
+      if (resp && resp.role === "responder" && resp.id !== user.id) {
+        if (resp.is_on_leave && resp.backup_responder_id && resp.backup_responder_id !== user.id) {
           assignedResponderId = resp.backup_responder_id;
           break;
         } else if (!resp.is_on_leave) {
@@ -98,16 +101,15 @@ export async function createTicketAction(formData: FormData) {
         }
       }
     }
-    if (!assignedResponderId && bindings[0]?.responder_id) {
-      assignedResponderId = bindings[0].responder_id;
-    }
   }
 
+  // 2. Fallback: If no location-bound responder found, pick the first active responder (never the complainant)
   if (!assignedResponderId) {
-    const { data: responders } = await supabase
+    const { data: responders } = await adminClient
       .from("profiles")
       .select("id, is_on_leave, backup_responder_id")
-      .eq("role", "responder");
+      .eq("role", "responder")
+      .neq("id", user.id);
 
     if (responders && responders.length > 0) {
       const activeResp = responders.find((r) => !r.is_on_leave);
@@ -115,7 +117,9 @@ export async function createTicketAction(formData: FormData) {
         assignedResponderId = activeResp.id;
       } else {
         const firstResp = responders[0];
-        assignedResponderId = firstResp.backup_responder_id || firstResp.id;
+        assignedResponderId = (firstResp.backup_responder_id && firstResp.backup_responder_id !== user.id)
+          ? firstResp.backup_responder_id
+          : firstResp.id;
       }
     }
   }

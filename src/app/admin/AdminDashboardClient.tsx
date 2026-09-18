@@ -24,6 +24,7 @@ import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import RefreshButton from "@/components/RefreshButton";
+import TicketResponseTimer from "@/components/TicketResponseTimer";
 
 export default function AdminDashboardClient({
   totalUsers,
@@ -31,6 +32,7 @@ export default function AdminDashboardClient({
   locationCount,
   issueCount,
   awaitingApprovalTickets,
+  pendingTickets = [],
   recentTasks,
   userRole = "admin",
   isScopedRole = false,
@@ -40,6 +42,7 @@ export default function AdminDashboardClient({
   locationCount: number;
   issueCount: number;
   awaitingApprovalTickets: Ticket[];
+  pendingTickets?: Ticket[];
   recentTasks: Task[];
   userRole?: string;
   isScopedRole?: boolean;
@@ -115,6 +118,88 @@ export default function AdminDashboardClient({
             Assign Operational Task
           </Link>
         </div>
+      </div>
+
+      {/* Live Complaint Response Monitor (Hierarchy & Responders) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="font-extrabold text-[#0F172A] text-base flex items-center gap-2">
+              <Clock className="w-5 h-5 text-indigo-600" />
+              Live Complaint Response SLA Monitor ({pendingTickets.length})
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Live second-by-second countdown for assigned responders and escalation hierarchy. Unresponded tickets auto-escalate upon expiry.
+            </p>
+          </div>
+
+          <Link
+            href="/admin/tickets?status=Pending"
+            className="text-xs font-bold px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all inline-flex items-center gap-1.5"
+          >
+            View Master Queue →
+          </Link>
+        </div>
+
+        {pendingTickets.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 text-xs border border-slate-200 rounded-xl bg-slate-50">
+            ✓ All active complaints have been responded to by responders!
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {pendingTickets.map((ticket) => {
+              const responderName = ticket.assigned_responder?.full_name || "Unassigned";
+              const title =
+                ticket.issue_type?.issue_title || ticket.custom_issue_title || "IT Support Ticket";
+
+              return (
+                <div
+                  key={ticket.id}
+                  className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between gap-3 hover:border-indigo-300 transition-colors"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-extrabold text-[#0F172A]">
+                          #{ticket.ticket_number}
+                        </span>
+                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold bg-amber-100 text-amber-800 rounded border border-amber-200">
+                          {ticket.status}
+                        </span>
+                        {ticket.escalation_level && ticket.escalation_level > 0 ? (
+                          <span className="px-1.5 py-0.5 text-[9px] uppercase font-bold bg-rose-100 text-rose-800 rounded border border-rose-200">
+                            Lvl {ticket.escalation_level}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <span className="text-[10px] text-slate-400">
+                        {formatDate(ticket.created_at)}
+                      </span>
+                    </div>
+
+                    <h4 className="font-bold text-[#0F172A] text-xs line-clamp-1">{title}</h4>
+                    <p className="text-[11px] text-slate-600">
+                      Resp: <strong className="text-slate-800">{responderName}</strong> • Site:{" "}
+                      <strong>{ticket.location?.name}</strong>
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                    <TicketResponseTimer ticket={ticket} />
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTicket(ticket)}
+                      className="px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 rounded-lg transition-all"
+                    >
+                      Inspect →
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Ratings Awaiting Admin Approval Management Section */}
