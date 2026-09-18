@@ -15,38 +15,16 @@ export default function TicketResponseTimer({
   isResponderView = false,
   className = "",
 }: TicketResponseTimerProps) {
+  // 1. ALL HOOKS CALLED AT TOP LEVEL UNCONDITIONALLY (Strict compliance with React Rule of Hooks)
   const [mounted, setMounted] = useState(false);
   const [now, setNow] = useState<number>(() => Date.now());
   const [hasTriggeredEscalation, setHasTriggeredEscalation] = useState<boolean>(false);
   const triggerRef = useRef<boolean>(false);
 
-  // If ticket is already responded/handled, response phase is over
   const isPending = ticket.status === "Pending";
+  const currentLevel = ticket.escalation_level || 0;
 
-  useEffect(() => {
-    setMounted(true);
-    if (!isPending) return;
-
-    // Update every second
-    const interval = setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isPending]);
-
-  if (!isPending) {
-    return (
-      <span
-        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 ${className}`}
-      >
-        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-        Responded
-      </span>
-    );
-  }
-
-  // Predefined issue SLAs
+  // Predefined issue SLAs calculation
   const issue = ticket.issue_type as any;
   const resHours = issue?.resolution_time_hours ?? 24;
   const resMins = issue?.resolution_time_minutes ?? 0;
@@ -73,9 +51,8 @@ export default function TicketResponseTimer({
       : defaultStep;
 
   const createdAt = new Date(ticket.created_at || Date.now()).getTime();
-  const currentLevel = ticket.escalation_level || 0;
 
-  // Calculate target deadline for current level
+  // Target deadline calculation
   let targetDeadline = createdAt + responderMins * 60 * 1000;
   let stageName = isResponderView ? "Time to Respond" : "Responder Window";
   let nextStage = "Supervisor";
@@ -101,34 +78,37 @@ export default function TicketResponseTimer({
   const remainingMs = targetDeadline - now;
   const isOverdue = remainingMs <= 0;
 
-  // Trigger background escalation when timer hits zero
+  // Hook 1: Mounting and interval tick
   useEffect(() => {
+    setMounted(true);
+    if (!isPending) return;
+
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isPending]);
+
+  // Hook 2: Trigger background escalation on expiration (Called unconditionally before any returns)
+  useEffect(() => {
+    if (!mounted || !isPending) return;
     if (isOverdue && currentLevel < 3 && !triggerRef.current && !hasTriggeredEscalation) {
       triggerRef.current = true;
       setHasTriggeredEscalation(true);
       fetch("/api/cron/escalations", { method: "POST" })
         .catch(() => {})
         .finally(() => {
-          // Re-enable after 60s if needed
           setTimeout(() => {
             triggerRef.current = false;
           }, 60000);
         });
     }
-  }, [isOverdue, currentLevel, hasTriggeredEscalation]);
+  }, [mounted, isPending, isOverdue, currentLevel, hasTriggeredEscalation]);
 
-  // Format HH:MM:SS
-  const absDiff = Math.abs(remainingMs);
-  const totalSeconds = Math.floor(absDiff / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  // 2. CONDITIONAL RENDERS (Only after all hooks have been declared)
 
-  const formattedTime = `${hours.toString().padStart(2, "0")}:${minutes
-    .toString()
-    .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-
-  // Before mounting on client, render a stable server representation to prevent hydration mismatch
+  // A. Server-Side / Pre-hydration placeholder
   if (!mounted) {
     return (
       <div
@@ -141,7 +121,30 @@ export default function TicketResponseTimer({
     );
   }
 
-  // Visual Themes
+  // B. Responded / Handled state (Status is not Pending)
+  if (!isPending) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 ${className}`}
+      >
+        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+        Responded
+      </span>
+    );
+  }
+
+  // Format HH:MM:SS
+  const absDiff = Math.abs(remainingMs);
+  const totalSeconds = Math.floor(absDiff / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const formattedTime = `${hours.toString().padStart(2, "0")}:${minutes
+    .toString()
+    .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+
+  // C. Level 3 Critical Escalation
   if (currentLevel >= 3) {
     return (
       <div
@@ -154,6 +157,7 @@ export default function TicketResponseTimer({
     );
   }
 
+  // D. Overdue / Auto-escalating
   if (isOverdue) {
     return (
       <div
@@ -168,8 +172,8 @@ export default function TicketResponseTimer({
     );
   }
 
-  const isWarning = remainingMs <= 30 * 60 * 1000; // Under 30 mins
-
+  // E. Warning (<30 mins remaining)
+  const isWarning = remainingMs <= 30 * 60 * 1000;
   if (isWarning) {
     return (
       <div
@@ -183,6 +187,7 @@ export default function TicketResponseTimer({
     );
   }
 
+  // F. Normal Countdown
   return (
     <div
       className={`inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-xl text-xs font-bold ${className}`}
