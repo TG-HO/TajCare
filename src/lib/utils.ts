@@ -46,6 +46,8 @@ export function getRoleBadgeColor(role: string) {
       return "bg-indigo-50 text-indigo-700 border-indigo-200";
     case "employee":
       return "bg-slate-100 text-slate-700 border-slate-200";
+    case "system":
+      return "bg-amber-100 text-amber-900 border-amber-300 font-bold";
     default:
       return "bg-slate-50 text-slate-700 border-slate-200";
   }

@@ -9,8 +9,8 @@ export async function getAssignedResponderIds(
   supabase: SupabaseClient,
   currentUser: Profile
 ): Promise<string[] | null> {
-  if (currentUser.role === "admin") {
-    return null; // Super Admin sees all
+  if (currentUser.role === "admin" || currentUser.role === "hod") {
+    return null; // Super Admin and HOD can see all tickets
   }
 
   if (currentUser.role === "supervisor") {
@@ -47,46 +47,6 @@ export async function getAssignedResponderIds(
     }
 
     const { data: responders } = await query;
-    return (responders || []).map((r) => r.id);
-  }
-
-  if (currentUser.role === "hod") {
-    // 1. Direct responders with hod_id = user.id
-    // 2. Line managers under this HOD
-    const { data: lineManagers } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("role", "line_manager")
-      .eq("hod_id", currentUser.id);
-
-    const lmIds = (lineManagers || []).map((lm) => lm.id);
-
-    // 3. Supervisors under this HOD or under those line managers
-    let supQuery = supabase
-      .from("profiles")
-      .select("id")
-      .eq("role", "supervisor");
-
-    if (lmIds.length > 0) {
-      supQuery = supQuery.or(`hod_id.eq.${currentUser.id},line_manager_id.in.(${lmIds.join(",")})`);
-    } else {
-      supQuery = supQuery.eq("hod_id", currentUser.id);
-    }
-
-    const { data: supervisors } = await supQuery;
-    const supIds = (supervisors || []).map((s) => s.id);
-
-    // 4. Responders reporting to any of the above or direct
-    const conditions: string[] = [`hod_id.eq.${currentUser.id}`];
-    if (lmIds.length > 0) conditions.push(`line_manager_id.in.(${lmIds.join(",")})`);
-    if (supIds.length > 0) conditions.push(`supervisor_id.in.(${supIds.join(",")})`);
-
-    const { data: responders } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("role", "responder")
-      .or(conditions.join(","));
-
     return (responders || []).map((r) => r.id);
   }
 

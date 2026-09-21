@@ -40,9 +40,9 @@ export async function supervisorTakeoverOrVisitAction(
     .eq("id", user.id)
     .single();
 
-  const allowedRoles = ["supervisor", "line_manager", "hod", "admin"];
+  const allowedRoles = ["supervisor", "admin"];
   if (!allowedRoles.includes(callerProfile?.role || "")) {
-    return { error: "Only Supervisors or higher roles can take operational action on escalated tickets." };
+    return { error: "Only Supervisors or Super Admins can take operational visit/resolution actions." };
   }
 
   // Fetch ticket details
@@ -248,12 +248,12 @@ export async function reassignTicketAction(
     return { error: "Supervisors can only reassign complaints to IT Responders." };
   }
 
-  // - Line Manager can reassign to 'responder' or 'supervisor'
+  // - Line Manager, HOD, and Admin can reassign to 'responder' or 'supervisor'
   if (
-    callerRole === "line_manager" &&
+    ["line_manager", "hod", "admin"].includes(callerRole) &&
     !["responder", "supervisor"].includes(targetProfile.role)
   ) {
-    return { error: "Line Managers can only reassign complaints to IT Responders or Supervisors." };
+    return { error: "Complaints can only be reassigned to IT Responders or Supervisors." };
   }
 
   // 3. Fetch current ticket details

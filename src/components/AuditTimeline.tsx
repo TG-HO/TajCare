@@ -31,8 +31,9 @@ export default function AuditTimeline({ logs }: AuditTimelineProps) {
       <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
         {sortedLogs.map((log, index) => {
           const actor = log.actor;
-          const actorName = actor?.full_name || "System User";
-          const actorRole = actor?.role || "user";
+          const isSystemLog = log.remarks?.includes("[ESCALATION") || log.remarks?.includes("AUTOMATED SLA BREACH");
+          const actorName = actor?.full_name || (isSystemLog ? "Hierarchy SLA Monitor" : "System User");
+          const actorRole = actor?.role || (isSystemLog ? "system" : "admin");
           const createdAt = log.created_at;
 
           // Compute time elapsed since previous log entry

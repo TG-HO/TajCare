@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Ticket, Profile, TicketStatus } from "@/types/database";
+import { useState, useEffect, useCallback } from "react";
+import { Ticket, Profile, TicketStatus, TicketLog } from "@/types/database";
 import { getStatusBadgeColor, formatDate } from "@/lib/utils";
 import {
   X,
@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   UserCheck,
   MessageSquarePlus,
+  RefreshCw,
 } from "lucide-react";
 import AuditTimeline from "@/components/AuditTimeline";
 import ImageLightboxModal from "@/components/ImageLightboxModal";
@@ -30,6 +31,7 @@ import {
   reassignTicketAction,
   addTicketCommentAction,
 } from "@/app/admin/tickets/actions";
+import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -51,6 +53,14 @@ export default function TicketDetailDrawer({
   const router = useRouter();
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
+  // Live real-time logs state
+  const [logs, setLogs] = useState<TicketLog[]>(ticket.ticket_logs || []);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // Available assignees state (fallback to fetched profiles if props are empty)
+  const [availableResponders, setAvailableResponders] = useState<Profile[]>(responders);
+  const [availableSupervisors, setAvailableSupervisors] = useState<Profile[]>(supervisors);
+
   // Action Modals State
   const [activeModal, setActiveModal] = useState<"visit" | "reassign" | "comment" | null>(null);
   const [targetStatus, setTargetStatus] = useState<TicketStatus>("Visit Date Scheduled");
@@ -66,17 +76,86 @@ export default function TicketDetailDrawer({
   const issueTitle =
     ticket.issue_type?.issue_title || ticket.custom_issue_title || "General Issue";
 
-  const logs = ticket.ticket_logs || [];
-
   const isClosed = ticket.status === "Closed" || ticket.status === "Permanently Closed";
+  const isSuperAdmin = userRole === "admin";
   const isSupervisorRole = userRole === "supervisor";
   const isLineManagerRole = userRole === "line_manager";
-  const isAdminOrHod = userRole === "admin" || userRole === "hod";
+  const isHodRole = userRole === "hod";
 
-  // Allowed actions based on hierarchy
-  const canSupervisorAct = (isSupervisorRole || isAdminOrHod) && !isClosed;
-  const canLineManagerAct = (isLineManagerRole || isAdminOrHod) && !isClosed;
+  // Actions based on strict hierarchy rules:
+  // - Supervisor & Super Admin can take operational actions (Schedule Visit, Mark Visited, Mark Resolved)
+  // - HOD and Line Manager only have Reassign and Comment options (no operational visit/resolution)
+  const canSupervisorAct = (isSupervisorRole || isSuperAdmin) && !isClosed;
+  const canLineManagerOrHodAct = (isLineManagerRole || isHodRole || isSuperAdmin || isSupervisorRole) && !isClosed;
   const canComment = ["supervisor", "line_manager", "hod", "admin"].includes(userRole);
+
+  // 1. Fetch fresh logs & Realtime subscription
+  const fetchFreshLogs = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("ticket_logs")
+        .select("*, actor:profiles!actor_id(full_name, role)")
+        .eq("ticket_id", ticket.id)
+        .order("created_at", { ascending: true });
+
+      if (!error && data) {
+        setLogs(data as TicketLog[]);
+      }
+    } catch (e) {
+      console.error("Error fetching fresh logs:", e);
+    }
+  }, [ticket.id]);
+
+  useEffect(() => {
+    fetchFreshLogs();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`ticket-logs-drawer-${ticket.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "ticket_logs",
+          filter: `ticket_id=eq.${ticket.id}`,
+        },
+        () => {
+          fetchFreshLogs();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [ticket.id, fetchFreshLogs]);
+
+  // 2. Fetch assignees if empty
+  useEffect(() => {
+    async function loadAssignees() {
+      const supabase = createClient();
+      if (availableResponders.length === 0) {
+        const { data: resData } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("role", "responder")
+          .order("full_name");
+        if (resData) setAvailableResponders(resData as Profile[]);
+      }
+
+      if (availableSupervisors.length === 0) {
+        const { data: supData } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("role", "supervisor")
+          .order("full_name");
+        if (supData) setAvailableSupervisors(supData as Profile[]);
+      }
+    }
+    loadAssignees();
+  }, [availableResponders.length, availableSupervisors.length]);
 
   // Handlers
   async function handleSupervisorVisitSubmit(e: React.FormEvent) {
@@ -101,6 +180,7 @@ export default function TicketDetailDrawer({
       toast.success(res.message);
       setActiveModal(null);
       setRemarks("");
+      await fetchFreshLogs();
       router.refresh();
       onClose();
     }
@@ -128,6 +208,7 @@ export default function TicketDetailDrawer({
       setActiveModal(null);
       setRemarks("");
       setReassignUserId("");
+      await fetchFreshLogs();
       router.refresh();
       onClose();
     }
@@ -150,6 +231,7 @@ export default function TicketDetailDrawer({
       toast.success(res.message);
       setActiveModal(null);
       setRemarks("");
+      await fetchFreshLogs();
       router.refresh();
     }
   }
@@ -171,11 +253,11 @@ export default function TicketDetailDrawer({
               >
                 {ticket.status}
               </span>
-              {ticket.escalation_level && ticket.escalation_level > 0 && (
+              {ticket.escalation_level && ticket.escalation_level > 0 ? (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
                   Level {ticket.escalation_level} Escalated
                 </span>
-              )}
+              ) : null}
             </div>
             <h2 className="text-lg font-bold text-[#0F172A] leading-snug">
               {issueTitle}
@@ -191,15 +273,15 @@ export default function TicketDetailDrawer({
         </div>
 
         {/* Action Bar for Administrative Roles */}
-        {!isClosed && (canSupervisorAct || canLineManagerAct || canComment) && (
+        {!isClosed && (canSupervisorAct || canLineManagerOrHodAct || canComment) && (
           <div className="px-6 py-3 bg-indigo-50/70 border-b border-indigo-100 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
               <ShieldCheck className="w-4 h-4 text-indigo-600" />
-              <span>Escalation Actions ({userRole.replace("_", " ").toUpperCase()}):</span>
+              <span>Actions ({userRole.replace("_", " ").toUpperCase()}):</span>
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Supervisor Operational Actions */}
+              {/* Supervisor & Super Admin Operational Actions */}
               {canSupervisorAct && (
                 <>
                   <button
@@ -237,8 +319,8 @@ export default function TicketDetailDrawer({
                 </>
               )}
 
-              {/* Reassign Action (Supervisor can reassign to responder; Line Manager / Admin to responder or supervisor) */}
-              {(canSupervisorAct || canLineManagerAct) && (
+              {/* Reassign Action (Supervisor: Responders only; Line Manager / HOD / Admin: Responders or Supervisors) */}
+              {canLineManagerOrHodAct && (
                 <button
                   onClick={() => {
                     setActiveModal("reassign");
@@ -370,8 +452,22 @@ export default function TicketDetailDrawer({
             </div>
           )}
 
-          {/* Ticket Logs & Remarks Activity History */}
-          <AuditTimeline logs={logs} />
+          {/* Ticket Logs & Remarks Activity History with Real-Time Updates */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                Live Timeline ({logs.length} events)
+              </span>
+              <button
+                onClick={fetchFreshLogs}
+                title="Refresh audit timeline"
+                className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <AuditTimeline logs={logs} />
+          </div>
         </div>
 
         {/* Footer */}
@@ -495,7 +591,7 @@ export default function TicketDetailDrawer({
                 >
                   <option value="">-- Choose New Assignee --</option>
                   <optgroup label="IT Responders">
-                    {responders
+                    {availableResponders
                       .filter((r) => r.id !== ticket.assigned_responder_id)
                       .map((r) => (
                         <option key={r.id} value={r.id}>
@@ -503,10 +599,11 @@ export default function TicketDetailDrawer({
                         </option>
                       ))}
                   </optgroup>
-                  {/* Line Manager & Admin can also reassign to Supervisors */}
-                  {(isLineManagerRole || isAdminOrHod) && supervisors.length > 0 && (
+
+                  {/* Line Manager, HOD & Admin can also select from Supervisors */}
+                  {!isSupervisorRole && availableSupervisors.length > 0 && (
                     <optgroup label="Supervisors">
-                      {supervisors
+                      {availableSupervisors
                         .filter((s) => s.id !== ticket.assigned_responder_id)
                         .map((s) => (
                           <option key={s.id} value={s.id}>
@@ -516,6 +613,16 @@ export default function TicketDetailDrawer({
                     </optgroup>
                   )}
                 </select>
+                {isSupervisorRole && (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    * Field Supervisors can reassign complaints to IT Responders only.
+                  </p>
+                )}
+                {!isSupervisorRole && (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    * Line Managers, HODs, and Super Admins can reassign to either an IT Responder or a Supervisor.
+                  </p>
+                )}
               </div>
 
               <div>

@@ -248,6 +248,29 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
         });
       }
 
+      // Also notify previous handler (responder / supervisor) that ticket has escalated past them
+      if (ticket.assigned_responder_id && !uniqueRecipients.includes(ticket.assigned_responder_id)) {
+        await createNotification({
+          userId: ticket.assigned_responder_id,
+          actorId: ticket.assigned_responder_id || ticket.complainant_id,
+          title: `⚠️ Ticket #${ticket.ticket_number} Escalated to ${targetRoleName}`,
+          message: `Ticket #${ticket.ticket_number} has exceeded the response threshold of ${formattedThreshold} and has been escalated to ${targetRoleName}.`,
+          type: "ticket",
+          referenceId: ticket.id,
+        });
+      }
+
+      if (targetLevel >= 2 && responder?.supervisor_id && !uniqueRecipients.includes(responder.supervisor_id)) {
+        await createNotification({
+          userId: responder.supervisor_id,
+          actorId: ticket.assigned_responder_id || ticket.complainant_id,
+          title: `🚨 Ticket #${ticket.ticket_number} Escalated to ${targetRoleName}`,
+          message: `Ticket #${ticket.ticket_number} has escalated past Supervisor level to ${targetRoleName} due to inaction.`,
+          type: "ticket",
+          referenceId: ticket.id,
+        });
+      }
+
       // 2. Insert audit entry into ticket_logs
       await adminClient.from("ticket_logs").insert({
         ticket_id: ticket.id,

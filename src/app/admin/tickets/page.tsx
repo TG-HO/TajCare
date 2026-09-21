@@ -14,7 +14,7 @@ export default async function AdminMasterTicketsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("id, role")
     .eq("id", user.id)
     .single();
 
@@ -40,10 +40,20 @@ export default async function AdminMasterTicketsPage() {
     .order("created_at", { ascending: false });
 
   if (isScoped) {
-    if (assignedResponderIds.length > 0) {
-      ticketsQuery = ticketsQuery.in("assigned_responder_id", assignedResponderIds);
+    if (profile?.role === "supervisor") {
+      if (assignedResponderIds.length > 0) {
+        ticketsQuery = ticketsQuery.or(
+          `assigned_responder_id.in.(${assignedResponderIds.join(",")}),supervisor_handling_id.eq.${profile.id}`
+        );
+      } else {
+        ticketsQuery = ticketsQuery.eq("supervisor_handling_id", profile.id);
+      }
     } else {
-      ticketsQuery = ticketsQuery.eq("assigned_responder_id", "00000000-0000-0000-0000-000000000000");
+      if (assignedResponderIds.length > 0) {
+        ticketsQuery = ticketsQuery.in("assigned_responder_id", assignedResponderIds);
+      } else {
+        ticketsQuery = ticketsQuery.eq("assigned_responder_id", "00000000-0000-0000-0000-000000000000");
+      }
     }
   }
 

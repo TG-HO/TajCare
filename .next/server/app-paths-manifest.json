@@ -1,8 +1,4 @@
 {
-  "/responder/page": "app/responder/page.js",
   "/api/cron/escalations/route": "app/api/cron/escalations/route.js",
-  "/leaderboard/page": "app/leaderboard/page.js",
-  "/admin/page": "app/admin/page.js",
-  "/admin/tickets/page": "app/admin/tickets/page.js",
-  "/admin/tasks/page": "app/admin/tasks/page.js"
+  "/admin/page": "app/admin/page.js"
 }

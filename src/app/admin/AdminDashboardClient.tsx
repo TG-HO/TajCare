@@ -36,6 +36,8 @@ export default function AdminDashboardClient({
   recentTasks,
   userRole = "admin",
   isScopedRole = false,
+  responders = [],
+  supervisors = [],
 }: {
   totalUsers: number;
   responderCount: number;
@@ -46,6 +48,8 @@ export default function AdminDashboardClient({
   recentTasks: Task[];
   userRole?: string;
   isScopedRole?: boolean;
+  responders?: Profile[];
+  supervisors?: Profile[];
 }) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [approvingTicket, setApprovingTicket] = useState<Ticket | null>(null);
@@ -469,6 +473,8 @@ export default function AdminDashboardClient({
         <TicketDetailDrawer
           ticket={selectedTicket}
           userRole={userRole}
+          responders={responders}
+          supervisors={supervisors}
           onClose={() => setSelectedTicket(null)}
         />
       )}

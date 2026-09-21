@@ -101,6 +101,19 @@ export default async function AdminDashboardPage() {
   const pendingTickets = (pendingTicketsData || []) as unknown as Ticket[];
   const recentTasks = (recentTasksData || []) as unknown as Task[];
 
+  // Fetch responders and supervisors for reassignment modal in drawer
+  const { data: respondersData } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("role", "responder")
+    .order("full_name");
+
+  const { data: supervisorsData } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("role", "supervisor")
+    .order("full_name");
+
   return (
     <AdminDashboardClient
       totalUsers={totalUsers || 0}
@@ -112,6 +125,8 @@ export default async function AdminDashboardPage() {
       recentTasks={recentTasks}
       userRole={userRole}
       isScopedRole={isScopedRole}
+      responders={(respondersData as Profile[]) || []}
+      supervisors={(supervisorsData as Profile[]) || []}
     />
   );
 }
