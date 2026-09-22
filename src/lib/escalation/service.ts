@@ -49,7 +49,7 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
       complainant:profiles!complainant_id(
         full_name,
         email,
-        phone
+        phone_number
       ),
       issue_type:predefined_issues(
         id,
@@ -74,6 +74,10 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
     `)
     .eq("status", "Pending")
     .lt("escalation_level", 3);
+
+  if (fetchError) {
+    console.error("[Escalation Service] Error fetching pending tickets:", fetchError);
+  }
 
   if (fetchError || !tickets || tickets.length === 0) {
     return { checkedCount: 0, escalatedCount: 0, details: [] };
@@ -245,6 +249,36 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
 
       // 1. Send in-app notifications and outbound emails to target recipients
       for (const recId of uniqueRecipients) {
+        let emailSent = false;
+        let recProfile = adminProfiles?.find((p) => p.id === recId);
+        if (!recProfile) {
+          const { data: p } = await adminClient
+            .from("profiles")
+            .select("id, role, full_name, email, line_manager_id, hod_id")
+            .eq("id", recId)
+            .single();
+          recProfile = p as any;
+        }
+
+        if (recProfile && recProfile.email) {
+          try {
+            const mailRes = await sendEscalationEmail({
+              ticket: ticket as any,
+              recipient: recProfile,
+              level: targetLevel,
+              targetRole: targetRoleName,
+              thresholdDuration: formattedThreshold,
+            });
+            if (mailRes.success) {
+              emailSent = true;
+            } else {
+              console.error(`[Escalation Mailer] Delivery failed for ${recProfile.email}:`, mailRes.error);
+            }
+          } catch (mailErr) {
+            console.error(`[Escalation Mailer] Error notifying ${recProfile.email}:`, mailErr);
+          }
+        }
+
         await createNotification({
           userId: recId,
           actorId: ticket.assigned_responder_id || ticket.complainant_id,
@@ -252,41 +286,16 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
           message,
           type: "ticket",
           referenceId: ticket.id,
-          skipEmail: true, // already dispatched via sendEscalationEmail below
+          skipEmail: emailSent, // If rich escalation email sent, skip generic email; otherwise fallback and send email!
         });
-
-        // Outbound Escalation Email via SMTP
-        const recProfile = adminProfiles?.find((p) => p.id === recId);
-        if (recProfile) {
-          try {
-            await sendEscalationEmail({
-              ticket: ticket as any,
-              recipient: recProfile,
-              level: targetLevel,
-              targetRole: targetRoleName,
-              thresholdDuration: formattedThreshold,
-            });
-          } catch (mailErr) {
-            console.error(`[Escalation Mailer] Error notifying ${recProfile.email}:`, mailErr);
-          }
-        }
       }
 
       // Also notify previous handler (responder / supervisor) that ticket has escalated past them
       if (ticket.assigned_responder_id && !uniqueRecipients.includes(ticket.assigned_responder_id)) {
-        await createNotification({
-          userId: ticket.assigned_responder_id,
-          actorId: ticket.assigned_responder_id || ticket.complainant_id,
-          title: `⚠️ Ticket #${ticket.ticket_number} Escalated to ${targetRoleName}`,
-          message: `Ticket #${ticket.ticket_number} has exceeded the response threshold of ${formattedThreshold} and has been escalated to ${targetRoleName}.`,
-          type: "ticket",
-          referenceId: ticket.id,
-          skipEmail: true, // already dispatched via sendEscalationEmail below
-        });
-
+        let responderMailSent = false;
         if (responder?.email) {
           try {
-            await sendEscalationEmail({
+            const rRes = await sendEscalationEmail({
               ticket: ticket as any,
               recipient: {
                 id: responder.id,
@@ -298,10 +307,25 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
               targetRole: `${targetRoleName} (FYI - Escalated Past Responder)`,
               thresholdDuration: formattedThreshold,
             });
+            if (rRes.success) {
+              responderMailSent = true;
+            } else {
+              console.error(`[Escalation Mailer] Delivery failed for responder ${responder.email}:`, rRes.error);
+            }
           } catch (mailErr) {
             console.error(`[Escalation Mailer] Error notifying responder:`, mailErr);
           }
         }
+
+        await createNotification({
+          userId: ticket.assigned_responder_id,
+          actorId: ticket.assigned_responder_id || ticket.complainant_id,
+          title: `⚠️ Ticket #${ticket.ticket_number} Escalated to ${targetRoleName}`,
+          message: `Ticket #${ticket.ticket_number} has exceeded the response threshold of ${formattedThreshold} and has been escalated to ${targetRoleName}.`,
+          type: "ticket",
+          referenceId: ticket.id,
+          skipEmail: responderMailSent,
+        });
       }
 
       if (targetLevel >= 2 && responder?.supervisor_id && !uniqueRecipients.includes(responder.supervisor_id)) {

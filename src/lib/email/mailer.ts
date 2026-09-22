@@ -111,6 +111,9 @@ export async function sendEscalationEmail(params: SendEscalationParams): Promise
     ticket.assigned_responder?.full_name || "Unassigned Responder";
   const complainantName = ticket.complainant?.full_name || "Staff Member";
 
+  const recipientRole = recipient.role || "staff";
+  const roleStr = recipientRole.toUpperCase();
+
   const levelPrefix =
     level === 1
       ? "⚠️ [LEVEL 1 WARNING]"
@@ -119,15 +122,15 @@ export async function sendEscalationEmail(params: SendEscalationParams): Promise
       : "🔥 [LEVEL 3 CRITICAL]";
 
   const subject = isOverridden
-    ? `${levelPrefix} [STAGING -> For ${recipient.full_name} (${recipient.role.toUpperCase()})] Ticket #${ticket.ticket_number}: ${issueTitle}`
+    ? `${levelPrefix} [STAGING -> For ${recipient.full_name || "User"} (${roleStr})] Ticket #${ticket.ticket_number}: ${issueTitle}`
     : `${levelPrefix} Ticket #${ticket.ticket_number}: ${issueTitle} (${locationName})`;
 
   const html = buildEscalationEmailHtml({
     ticketNumber: ticket.ticket_number,
     level,
     targetRole,
-    recipientName: recipient.full_name,
-    recipientRole: recipient.role,
+    recipientName: recipient.full_name || "User",
+    recipientRole: recipientRole,
     intendedEmail: recipient.email,
     issueTitle,
     category,
