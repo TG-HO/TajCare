@@ -81,14 +81,14 @@ export default function TicketResponseTimer({
   // Hook 1: Mounting and interval tick
   useEffect(() => {
     setMounted(true);
-    if (!isPending) return;
+    if (!isPending || currentLevel >= 3) return;
 
     const interval = setInterval(() => {
       setNow(Date.now());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPending]);
+  }, [isPending, currentLevel]);
 
   // Hook 2: Trigger background escalation on expiration (Called unconditionally before any returns)
   useEffect(() => {
@@ -108,7 +108,19 @@ export default function TicketResponseTimer({
 
   // 2. CONDITIONAL RENDERS (Only after all hooks have been declared)
 
-  // A. Server-Side / Pre-hydration placeholder
+  // A. Level 3 Escalated - HOD has no response timer (Render static status immediately)
+  if (currentLevel >= 3) {
+    return (
+      <div
+        className={`inline-flex items-center gap-1.5 px-3 py-1 bg-red-950 text-red-100 rounded-xl text-xs font-bold shadow-sm border border-red-800 ${className}`}
+      >
+        <Flame className="w-3.5 h-3.5 text-amber-400" />
+        <span>Level 3 (HOD & Admin Escalated)</span>
+      </div>
+    );
+  }
+
+  // B. Server-Side / Pre-hydration placeholder
   if (!mounted) {
     return (
       <div
@@ -121,7 +133,7 @@ export default function TicketResponseTimer({
     );
   }
 
-  // B. Responded / Handled state (Status is not Pending)
+  // C. Responded / Handled state (Status is not Pending)
   if (!isPending) {
     return (
       <span
@@ -133,7 +145,7 @@ export default function TicketResponseTimer({
     );
   }
 
-  // B2. Locked for responder state
+  // C2. Locked for responder state
   if (isResponderView && ticket.locked_for_responder) {
     return (
       <span
@@ -155,19 +167,6 @@ export default function TicketResponseTimer({
   const formattedTime = `${hours.toString().padStart(2, "0")}:${minutes
     .toString()
     .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-
-  // C. Level 3 Critical Escalation
-  if (currentLevel >= 3) {
-    return (
-      <div
-        className={`inline-flex items-center gap-1.5 px-3 py-1 bg-red-900/90 text-white rounded-xl text-xs font-bold shadow-sm border border-red-700 animate-pulse ${className}`}
-      >
-        <Flame className="w-3.5 h-3.5 text-amber-300" />
-        <span>Level 3 (HOD Alert)</span>
-        <span className="font-mono text-red-200" suppressHydrationWarning>+{formattedTime}</span>
-      </div>
-    );
-  }
 
   // D. Overdue / Auto-escalating
   if (isOverdue) {

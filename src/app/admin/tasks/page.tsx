@@ -108,6 +108,7 @@ export default async function AdminTasksPage() {
         locations={locations || []}
         responders={responders || []}
         tasks={tasks}
+        userRole={profile?.role}
       />
     </div>
   );

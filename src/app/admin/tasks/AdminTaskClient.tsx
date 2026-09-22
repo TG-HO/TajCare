@@ -35,11 +35,14 @@ export default function AdminTaskClient({
   locations,
   responders,
   tasks,
+  userRole = "admin",
 }: {
   locations: Location[];
   responders: Profile[];
   tasks: Task[];
+  userRole?: string;
 }) {
+  const isFieldSupervisor = userRole === "supervisor";
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTaskForTimeline, setSelectedTaskForTimeline] = useState<Task | null>(null);
   const [decisionTask, setDecisionTask] = useState<Task | null>(null);
@@ -75,6 +78,11 @@ export default function AdminTaskClient({
 
   async function handleCreateTask(e: React.FormEvent) {
     e.preventDefault();
+    if (isFieldSupervisor) {
+      toast.error("Field supervisors are not authorized to assign operational tasks.");
+      return;
+    }
+
     if (!title.trim() || !description.trim() || !locationId) {
       toast.error("Please fill in task title, description, and target location.");
       return;
@@ -173,20 +181,24 @@ export default function AdminTaskClient({
           </span>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl shadow transition-all flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Register Operational Task
-        </button>
+        {!isFieldSupervisor && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl shadow transition-all flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Register Operational Task
+          </button>
+        )}
       </div>
 
       {/* Task List */}
       <div className="space-y-4">
         {tasks.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400">
-            No operational tasks created yet. Click &quot;Register Operational Task&quot; to assign site setups or maintenance duties.
+            {isFieldSupervisor
+              ? "No operational tasks assigned to your responders yet."
+              : "No operational tasks created yet. Click \"Register Operational Task\" to assign site setups or maintenance duties."}
           </div>
         ) : (
           tasks.map((task) => {
@@ -312,7 +324,7 @@ export default function AdminTaskClient({
       </div>
 
       {/* Create Operational Task Modal */}
-      {showCreateModal && (
+      {showCreateModal && !isFieldSupervisor && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">

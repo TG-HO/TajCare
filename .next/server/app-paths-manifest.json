@@ -1,4 +1,3 @@
 {
-  "/api/cron/escalations/route": "app/api/cron/escalations/route.js",
-  "/admin/page": "app/admin/page.js"
+  "/api/test-email/route": "app/api/test-email/route.js"
 }

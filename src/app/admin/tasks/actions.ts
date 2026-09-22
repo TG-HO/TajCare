@@ -39,6 +39,17 @@ export async function createTaskAction(formData: FormData) {
 
   const adminClient = createAdminClient();
 
+  // Enforce role restriction: Field supervisors cannot assign operational tasks
+  const { data: callerProfile } = await adminClient
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (callerProfile?.role === "supervisor") {
+    return { error: "Field supervisors are not authorized to assign operational tasks." };
+  }
+
   const initialStatus = dueDate ? "Due Date Assigned" : "First Visit Assigned";
 
   // Create task

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createNotification } from "@/lib/notifications/service";
+import { sendEscalationEmail } from "@/lib/email/mailer";
 
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} minutes`;
@@ -44,6 +45,12 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
       supervisor_handling_id,
       assigned_responder_id,
       complainant_id,
+      location:locations(name),
+      complainant:profiles!complainant_id(
+        full_name,
+        email,
+        phone
+      ),
       issue_type:predefined_issues(
         id,
         issue_title,
@@ -236,7 +243,7 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
           ? `Ticket #${ticket.ticket_number} remains unresponded after ${formattedThreshold}. Escalated to Line Manager for intervention.`
           : `CRITICAL: Ticket #${ticket.ticket_number} has exceeded ${formattedThreshold} without responder activity. Escalated to HOD & System Admin.`;
 
-      // 1. Send notifications to target recipients
+      // 1. Send in-app notifications and outbound emails to target recipients
       for (const recId of uniqueRecipients) {
         await createNotification({
           userId: recId,
@@ -246,6 +253,22 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
           type: "ticket",
           referenceId: ticket.id,
         });
+
+        // Outbound Escalation Email via SMTP
+        const recProfile = adminProfiles?.find((p) => p.id === recId);
+        if (recProfile) {
+          try {
+            await sendEscalationEmail({
+              ticket: ticket as any,
+              recipient: recProfile,
+              level: targetLevel,
+              targetRole: targetRoleName,
+              thresholdDuration: formattedThreshold,
+            });
+          } catch (mailErr) {
+            console.error(`[Escalation Mailer] Error notifying ${recProfile.email}:`, mailErr);
+          }
+        }
       }
 
       // Also notify previous handler (responder / supervisor) that ticket has escalated past them
@@ -258,6 +281,25 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
           type: "ticket",
           referenceId: ticket.id,
         });
+
+        if (responder?.email) {
+          try {
+            await sendEscalationEmail({
+              ticket: ticket as any,
+              recipient: {
+                id: responder.id,
+                full_name: responder.full_name,
+                email: responder.email,
+                role: "responder",
+              },
+              level: targetLevel,
+              targetRole: `${targetRoleName} (FYI - Escalated Past Responder)`,
+              thresholdDuration: formattedThreshold,
+            });
+          } catch (mailErr) {
+            console.error(`[Escalation Mailer] Error notifying responder:`, mailErr);
+          }
+        }
       }
 
       if (targetLevel >= 2 && responder?.supervisor_id && !uniqueRecipients.includes(responder.supervisor_id)) {

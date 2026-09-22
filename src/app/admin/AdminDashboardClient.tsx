@@ -114,13 +114,15 @@ export default function AdminDashboardClient({
             Log Admin Complaint
           </Link>
 
-          <Link
-            href="/admin/tasks"
-            className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-1.5"
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            Assign Operational Task
-          </Link>
+          {userRole !== "supervisor" && (
+            <Link
+              href="/admin/tasks"
+              className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-1.5"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Assign Operational Task
+            </Link>
+          )}
         </div>
       </div>
 
