@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { createNotification } from "@/lib/notifications/service";
 
 export async function updateTicketStatusAction(
   ticketId: string,
@@ -29,7 +30,7 @@ export async function updateTicketStatusAction(
 
   const { data: ticket } = await adminClient
     .from("tickets")
-    .select("status, scheduled_visit_date, sla_breached, location:locations(type), issue_type_id, points_pending")
+    .select("ticket_number, complainant_id, status, scheduled_visit_date, sla_breached, location:locations(type), issue_type_id, points_pending")
     .eq("id", ticketId)
     .single();
 
@@ -74,6 +75,18 @@ export async function updateTicketStatusAction(
     const result = rpcResult as { error?: string; success?: boolean; pending_points?: number };
     if (result?.error) {
       return { error: result.error };
+    }
+
+    // Notify complainant about resolution and prompt for rating / closure
+    if (ticket.complainant_id) {
+      await createNotification({
+        userId: ticket.complainant_id,
+        actorId: user.id,
+        title: `Complaint #${ticket.ticket_number || ""} Marked as Issue Resolved`,
+        message: `Your complaint #${ticket.ticket_number || ""} has been resolved by the IT Responder. Please review and provide your rating / feedback to close it.${remarks ? ` Remarks: ${remarks}` : ""}`,
+        type: "ticket",
+        referenceId: ticketId,
+      });
     }
 
     revalidatePath("/responder");
@@ -129,6 +142,18 @@ export async function updateTicketStatusAction(
     remarks: logRemarks,
     visit_date: visitDate ? new Date(visitDate).toISOString() : null,
   });
+
+  // Notify complainant about status change
+  if (ticket.complainant_id) {
+    await createNotification({
+      userId: ticket.complainant_id,
+      actorId: user.id,
+      title: `Complaint #${ticket.ticket_number || ""} Status: ${targetStatus}`,
+      message: `Your complaint #${ticket.ticket_number || ""} has been updated to "${targetStatus}".${remarks ? ` Remarks: ${remarks}` : ""}`,
+      type: "ticket",
+      referenceId: ticketId,
+    });
+  }
 
   revalidatePath("/responder");
   revalidatePath("/dashboard");

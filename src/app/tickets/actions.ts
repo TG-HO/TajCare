@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
-import { createNotification } from "@/lib/notifications/service";
+import { createNotification, createRoleNotifications } from "@/lib/notifications/service";
 
 export async function createTicketAction(formData: FormData) {
   const rawIssueTypeId = (formData.get("issue_type_id") as string) || null;
@@ -173,6 +173,16 @@ export async function createTicketAction(formData: FormData) {
     });
   }
 
+  // Confirmation email & notification to complainant
+  await createNotification({
+    userId: user.id,
+    actorId: user.id,
+    title: `Complaint #${ticket.ticket_number} Submitted Successfully`,
+    message: `Your complaint #${ticket.ticket_number} has been logged and queued for IT support.`,
+    type: "ticket",
+    referenceId: ticket.id,
+  });
+
   revalidatePath("/dashboard");
   return {
     success: true,
@@ -317,6 +327,17 @@ export async function adminCreateTicketAction(formData: FormData) {
     });
   }
 
+  if (ticket.complainant_id && ticket.complainant_id !== user.id) {
+    await createNotification({
+      userId: ticket.complainant_id,
+      actorId: user.id,
+      title: `Admin Complaint #${ticket.ticket_number} Logged`,
+      message: `A priority complaint #${ticket.ticket_number} has been logged for your location by System Admin.`,
+      type: "ticket",
+      referenceId: ticket.id,
+    });
+  }
+
   revalidatePath("/admin/tickets");
   revalidatePath("/admin");
   revalidatePath("/responder");
@@ -359,6 +380,24 @@ export async function submitRatingAction(ticketId: string, rating: number, remar
 
   const result = rpcResult as { error?: string; success?: boolean };
   if (result?.error) return { error: result.error };
+
+  // Notify Admins that a rating is awaiting review and approval (triggers in-app + email)
+  const { data: ticket } = await adminClient
+    .from("tickets")
+    .select("ticket_number, assigned_responder_id")
+    .eq("id", ticketId)
+    .single();
+
+  if (ticket) {
+    await createRoleNotifications({
+      role: "admin",
+      actorId: user.id,
+      title: `Rating Awaiting Approval: #${ticket.ticket_number}`,
+      message: `Complaint #${ticket.ticket_number} was rated ${rating}★ by Site Manager — awaiting your review and points approval.`,
+      type: "rating",
+      referenceId: ticketId,
+    });
+  }
 
   revalidatePath("/dashboard");
   revalidatePath("/admin");
@@ -406,6 +445,37 @@ export async function adminApproveRatingAction(
   const result = rpcResult as { error?: string; success?: boolean; confirmed_points?: number };
   if (result?.error) return { error: result.error };
 
+  // Notify responder of confirmed points & notify complainant of official ticket closure (triggers in-app + email)
+  const { data: ticket } = await adminClient
+    .from("tickets")
+    .select("ticket_number, assigned_responder_id, complainant_id")
+    .eq("id", ticketId)
+    .single();
+
+  if (ticket) {
+    if (ticket.assigned_responder_id) {
+      await createNotification({
+        userId: ticket.assigned_responder_id,
+        actorId: user.id,
+        title: `Rating Approved & Points Confirmed`,
+        message: `Complaint #${ticket.ticket_number} rating approved (${finalRating}★). +${result?.confirmed_points || 0} confirmed points credited!`,
+        type: "points",
+        referenceId: ticketId,
+      });
+    }
+
+    if (ticket.complainant_id) {
+      await createNotification({
+        userId: ticket.complainant_id,
+        actorId: user.id,
+        title: `Complaint #${ticket.ticket_number} Officially Closed`,
+        message: `Your complaint #${ticket.ticket_number} has been officially approved and closed with a ${finalRating}★ rating.${remarks ? ` Remarks: ${remarks}` : ""}`,
+        type: "ticket",
+        referenceId: ticketId,
+      });
+    }
+  }
+
   revalidatePath("/admin");
   revalidatePath("/admin/tickets");
   revalidatePath("/dashboard");
@@ -443,7 +513,7 @@ export async function reopenTicketAction(ticketId: string, remarks: string) {
 
   const { data: ticket } = await adminClient
     .from("tickets")
-    .select("status, closed_at, reopened_count")
+    .select("status, closed_at, reopened_count, ticket_number, assigned_responder_id")
     .eq("id", ticketId)
     .single();
 
@@ -481,6 +551,18 @@ export async function reopenTicketAction(ticketId: string, remarks: string) {
 
   const result = rpcResult as { error?: string; success?: boolean; reopened_count?: number };
   if (result?.error) return { error: result.error };
+
+  // Notify assigned responder of re-opened complaint (triggers in-app + email)
+  if (ticket.assigned_responder_id) {
+    await createNotification({
+      userId: ticket.assigned_responder_id,
+      actorId: user.id,
+      title: `Complaint #${ticket.ticket_number} Re-Opened`,
+      message: `Complaint #${ticket.ticket_number} was re-opened by Site Manager (Count: ${result?.reopened_count || 1}). Reason: ${remarks}. Please re-attend promptly.`,
+      type: "ticket",
+      referenceId: ticketId,
+    });
+  }
 
   revalidatePath("/dashboard");
   revalidatePath("/admin");

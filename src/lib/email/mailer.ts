@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
-import { buildEscalationEmailHtml } from "./templates";
+import { buildEscalationEmailHtml, buildGeneralNotificationEmailHtml } from "./templates";
 
 /**
  * SMTP Configuration
@@ -179,3 +179,92 @@ ${isOverridden ? `NOTE: Sent to ${overrideEmail} due to staging override.` : ""}
     };
   }
 }
+
+export interface SendGeneralNotificationParams {
+  to: string;
+  recipientName: string;
+  recipientRole: string;
+  title: string;
+  message: string;
+  type?: string;
+  referenceId?: string | null;
+}
+
+export async function sendGeneralNotificationEmail(params: SendGeneralNotificationParams): Promise<{
+  success: boolean;
+  recipientEmail: string;
+  actualDeliveredTo: string;
+  isOverridden: boolean;
+  error?: string;
+}> {
+  const { to, recipientName, recipientRole, title, message, type = "info", referenceId } = params;
+
+  const overrideEmail = getEmailOverride();
+  const isOverridden = Boolean(overrideEmail && overrideEmail.length > 0);
+  const targetEmail = isOverridden ? (overrideEmail as string) : to;
+
+  if (!targetEmail) {
+    return {
+      success: false,
+      recipientEmail: to,
+      actualDeliveredTo: "",
+      isOverridden,
+      error: "No recipient email address available.",
+    };
+  }
+
+  const subject = isOverridden
+    ? `[STAGING -> For ${recipientName} (${recipientRole.toUpperCase()})] ${title}`
+    : `[Taj Care] ${title}`;
+
+  const html = buildGeneralNotificationEmailHtml({
+    title,
+    message,
+    type,
+    recipientName,
+    recipientRole,
+    intendedEmail: to,
+    referenceId,
+    isOverride: isOverridden,
+    overrideEmail: overrideEmail || "",
+  });
+
+  const text = `
+TAJ CARE • NOTIFICATION
+===============================================
+${title}
+
+${message}
+
+Intended Recipient: ${recipientName} (${recipientRole}) <${to}>
+${isOverridden ? `NOTE: Delivered to ${overrideEmail} due to staging override.` : ""}
+`.trim();
+
+  try {
+    const transporter = getMailTransporter();
+    await transporter.sendMail({
+      from: SMTP_FROM,
+      to: targetEmail,
+      subject,
+      text,
+      html,
+    });
+
+    return {
+      success: true,
+      recipientEmail: to,
+      actualDeliveredTo: targetEmail,
+      isOverridden,
+    };
+  } catch (err: any) {
+    console.error(`[SMTP Error] Failed sending notification email to ${targetEmail}:`, err?.message || err);
+    return {
+      success: false,
+      recipientEmail: to,
+      actualDeliveredTo: targetEmail,
+      isOverridden,
+      error: err?.message || "Unknown SMTP delivery error",
+    };
+  }
+}
+

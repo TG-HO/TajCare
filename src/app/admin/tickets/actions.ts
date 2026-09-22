@@ -53,6 +53,7 @@ export async function supervisorTakeoverOrVisitAction(
       ticket_number,
       status,
       assigned_responder_id,
+      complainant_id,
       points_pending,
       locked_for_responder,
       supervisor_handled,
@@ -178,6 +179,22 @@ export async function supervisorTakeoverOrVisitAction(
     });
   }
 
+  // Notify complainant about supervisor status transition
+  if (ticket.complainant_id) {
+    await createNotification({
+      userId: ticket.complainant_id,
+      actorId: user.id,
+      title: targetStatus === "Issue Resolved"
+        ? `Complaint #${ticket.ticket_number} Marked as Issue Resolved`
+        : `Complaint #${ticket.ticket_number} Status: ${targetStatus}`,
+      message: targetStatus === "Issue Resolved"
+        ? `Your complaint #${ticket.ticket_number} has been marked as Issue Resolved by ${callerProfile?.full_name || "Supervisor"}. Please review and provide your rating / feedback to close it.${remarks ? ` Remarks: ${remarks}` : ""}`
+        : `Your complaint #${ticket.ticket_number} has been updated to "${targetStatus}" by ${callerProfile?.full_name || "Supervisor"}.${remarks ? ` Remarks: ${remarks}` : ""}`,
+      type: "ticket",
+      referenceId: ticket.id,
+    });
+  }
+
   revalidatePath("/admin");
   revalidatePath("/admin/tickets");
   revalidatePath("/responder");
@@ -263,6 +280,7 @@ export async function reassignTicketAction(
       id,
       ticket_number,
       status,
+      complainant_id,
       assigned_responder_id,
       supervisor_handled,
       supervisor_handling_id,
@@ -379,6 +397,18 @@ export async function reassignTicketAction(
     referenceId: ticket.id,
   });
 
+  // Notify complainant about reassignment
+  if (ticket.complainant_id) {
+    await createNotification({
+      userId: ticket.complainant_id,
+      actorId: user.id,
+      title: `Complaint #${ticket.ticket_number} Reassigned`,
+      message: `Your complaint #${ticket.ticket_number} has been reassigned to ${targetProfile.full_name}.`,
+      type: "ticket",
+      referenceId: ticket.id,
+    });
+  }
+
   revalidatePath("/admin");
   revalidatePath("/admin/tickets");
   revalidatePath("/responder");
@@ -445,6 +475,18 @@ export async function addTicketCommentAction(
       actorId: user.id,
       title: `New Comment on Ticket #${ticket.ticket_number}`,
       message: `${callerProfile?.full_name} commented: "${remarks.slice(0, 100)}"`,
+      type: "ticket",
+      referenceId: ticketId,
+    });
+  }
+
+  // Send notification to complainant if comment by supervisor/admin
+  if (ticket.complainant_id && ticket.complainant_id !== user.id) {
+    await createNotification({
+      userId: ticket.complainant_id,
+      actorId: user.id,
+      title: `New Comment on Complaint #${ticket.ticket_number}`,
+      message: `${callerProfile?.full_name} (${roleLabel}) commented: "${remarks.slice(0, 100)}"`,
       type: "ticket",
       referenceId: ticketId,
     });

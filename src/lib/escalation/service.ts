@@ -252,6 +252,7 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
           message,
           type: "ticket",
           referenceId: ticket.id,
+          skipEmail: true, // already dispatched via sendEscalationEmail below
         });
 
         // Outbound Escalation Email via SMTP
@@ -280,6 +281,7 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
           message: `Ticket #${ticket.ticket_number} has exceeded the response threshold of ${formattedThreshold} and has been escalated to ${targetRoleName}.`,
           type: "ticket",
           referenceId: ticket.id,
+          skipEmail: true, // already dispatched via sendEscalationEmail below
         });
 
         if (responder?.email) {
