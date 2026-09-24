@@ -57,6 +57,8 @@ export async function supervisorTakeoverOrVisitAction(
       points_pending,
       locked_for_responder,
       supervisor_handled,
+      reassigned_from_id,
+      reassigned_at,
       issue_type_id,
       assigned_responder:profiles!assigned_responder_id(id, full_name, email)
     `)
@@ -71,57 +73,87 @@ export async function supervisorTakeoverOrVisitAction(
   const targetStatus = newStatus === "Rescheduled" ? "Visit Date Scheduled" : newStatus;
   const wasAlreadyLocked = ticket.locked_for_responder;
   const prevResponder = ticket.assigned_responder as any;
+  const prevResponderId = ticket.assigned_responder_id;
+  const isAssigneeChanging = prevResponderId && prevResponderId !== user.id;
 
-  // 1. Points Reversal & Penalty on IT Responder (if not already locked by supervisor)
-  if (!wasAlreadyLocked && ticket.assigned_responder_id) {
+  // 1. Points Reversal & Penalty on IT Responder (if reassigned/taken over from another responder)
+  if (isAssigneeChanging && !wasAlreadyLocked) {
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
 
-    // Revert pending points from monthly record if any were added
+    // Accurately deduct pending points from the previous responder's monthly record
     if ((ticket.points_pending ?? 0) > 0) {
-      await adminClient
+      const { data: prevMonthly } = await adminClient
         .from("responder_monthly_points")
-        .update({
-          pending_points: 0,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("responder_id", ticket.assigned_responder_id)
+        .select("pending_points")
+        .eq("responder_id", prevResponderId)
         .eq("month", currentMonth)
-        .eq("year", currentYear);
+        .eq("year", currentYear)
+        .single();
+
+      if (prevMonthly) {
+        const updatedPending = Math.max(0, (prevMonthly.pending_points || 0) - (ticket.points_pending || 0));
+        await adminClient
+          .from("responder_monthly_points")
+          .update({
+            pending_points: updatedPending,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("responder_id", prevResponderId)
+          .eq("month", currentMonth)
+          .eq("year", currentYear);
+      }
     }
 
     // Insert penalty entry into points_transactions
     await adminClient.from("points_transactions").insert({
       ticket_id: ticket.id,
-      responder_id: ticket.assigned_responder_id,
+      responder_id: prevResponderId,
       event_type: "ESCALATION_PENALTY",
       base_points: 0,
       rating_multiplier: 1.0,
       sla_penalty: 15,
       final_points: -15,
       actor_id: user.id,
-      remarks: `⚠️ Supervisor Takeover: Ticket #${ticket.ticket_number} escalated and locked by ${callerProfile?.full_name} (${callerProfile?.role}). Responder pending points reversed and -15 pts penalty applied.`,
+      remarks: `⚠️ Supervisor Takeover: Ticket #${ticket.ticket_number} escalated and locked by ${callerProfile?.full_name} (${callerProfile?.role}). Previous responder pending points reversed and -15 pts penalty applied.`,
     });
 
-    // Notify the responder of the lockout and penalty
+    // Notify the previous responder of the takeover and penalty
     await createNotification({
-      userId: ticket.assigned_responder_id,
+      userId: prevResponderId,
       actorId: user.id,
-      title: `Complaint #${ticket.ticket_number} Locked by Supervisor`,
+      title: `Complaint #${ticket.ticket_number} Taken Over by Supervisor`,
       message: `Supervisor ${callerProfile?.full_name} has taken over Complaint #${ticket.ticket_number}. Your pending points have been reversed and a -15 pts SLA penalty was applied.`,
       type: "ticket",
       referenceId: ticket.id,
     });
   }
 
-  // 2. Handle status transition
+  // 2. Supervisor becomes the responder on this complaint
+  const nowIso = new Date().toISOString();
+
   if (targetStatus === "Issue Resolved") {
+    // Assign to supervisor first so fn_mark_issue_resolved attributes resolution and points to supervisor
+    await adminClient
+      .from("tickets")
+      .update({
+        assigned_responder_id: user.id,
+        reassigned_from_id: isAssigneeChanging ? prevResponderId : (ticket as any).reassigned_from_id,
+        reassigned_at: isAssigneeChanging ? nowIso : (ticket as any).reassigned_at,
+        locked_for_responder: true,
+        supervisor_handled: true,
+        supervisor_handling_id: user.id,
+        sla_breached: true,
+        updated_at: nowIso,
+      })
+      .eq("id", ticketId);
+
     const { data: rpcResult, error: rpcError } = await adminClient.rpc(
       "fn_mark_issue_resolved",
       {
         p_ticket_id: ticketId,
         p_actor_id: user.id,
-        p_remarks: `[SUPERVISOR RESOLUTION] ${remarks}`,
+        p_remarks: `[SUPERVISOR RESOLUTION by ${callerProfile?.full_name}] ${remarks}`,
         p_visit_date: visitDate ? new Date(visitDate).toISOString() : null,
       }
     );
@@ -129,26 +161,18 @@ export async function supervisorTakeoverOrVisitAction(
     if (rpcError) {
       return { error: rpcError.message };
     }
-
-    // Mark as locked and supervisor handled
-    await adminClient
-      .from("tickets")
-      .update({
-        locked_for_responder: true,
-        supervisor_handled: true,
-        supervisor_handling_id: user.id,
-        sla_breached: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", ticketId);
   } else {
     const updateData: Record<string, unknown> = {
       status: targetStatus,
+      assigned_responder_id: user.id,
+      reassigned_from_id: isAssigneeChanging ? prevResponderId : (ticket as any).reassigned_from_id,
+      reassigned_at: isAssigneeChanging ? nowIso : (ticket as any).reassigned_at,
       locked_for_responder: true,
       supervisor_handled: true,
       supervisor_handling_id: user.id,
       sla_breached: true,
-      updated_at: new Date().toISOString(),
+      points_pending: 0, // Unresolved status has 0 pending points
+      updated_at: nowIso,
     };
 
     if (visitDate) {
@@ -174,7 +198,7 @@ export async function supervisorTakeoverOrVisitAction(
       actor_id: user.id,
       previous_status: prevStatus,
       new_status: targetStatus,
-      remarks: `[SUPERVISOR ACTION by ${callerProfile?.full_name}] Status changed to "${targetStatus}". Ticket locked for responder (${prevResponder?.full_name || "Responder"}).\nRemarks: ${remarks}`,
+      remarks: `[SUPERVISOR ACTION by ${callerProfile?.full_name}] Supervisor assumed responder role. Status: "${targetStatus}". Locked for previous responder (${prevResponder?.full_name || "Responder"}).\nRemarks: ${remarks}`,
       visit_date: visitDate ? new Date(visitDate).toISOString() : null,
     });
   }
@@ -333,15 +357,26 @@ export async function reassignTicketAction(
 
     // Revert pending points from monthly record if any
     if ((ticket.points_pending ?? 0) > 0) {
-      await adminClient
+      const { data: prevMonthly } = await adminClient
         .from("responder_monthly_points")
-        .update({
-          pending_points: 0,
-          updated_at: nowIso,
-        })
+        .select("pending_points")
         .eq("responder_id", prevHandlerId)
         .eq("month", currentMonth)
-        .eq("year", currentYear);
+        .eq("year", currentYear)
+        .single();
+
+      if (prevMonthly) {
+        const updatedPending = Math.max(0, (prevMonthly.pending_points || 0) - (ticket.points_pending || 0));
+        await adminClient
+          .from("responder_monthly_points")
+          .update({
+            pending_points: updatedPending,
+            updated_at: nowIso,
+          })
+          .eq("responder_id", prevHandlerId)
+          .eq("month", currentMonth)
+          .eq("year", currentYear);
+      }
     }
 
     // Apply -15 pts penalty to previous handler
@@ -374,6 +409,7 @@ export async function reassignTicketAction(
 
   // 6. Update ticket to new assignee
   const isTargetSupervisor = targetProfile.role === "supervisor";
+  const isResolvedStatus = ["Issue Resolved", "Awaiting Supervisor Approval", "Awaiting Admin Approval"].includes(ticket.status);
 
   const updateData: Record<string, unknown> = {
     assigned_responder_id: newAssigneeId,
@@ -384,7 +420,7 @@ export async function reassignTicketAction(
     locked_for_responder: isTargetSupervisor,
     supervisor_handled: isTargetSupervisor,
     supervisor_handling_id: isTargetSupervisor ? newAssigneeId : null,
-    points_pending: basePoints,
+    points_pending: isResolvedStatus ? basePoints : 0,
     points_awarded: basePoints,
     sla_breached: true,
     updated_at: nowIso,

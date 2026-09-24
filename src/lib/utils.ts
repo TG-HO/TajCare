@@ -79,6 +79,19 @@ export function getStatusBadgeColor(status: TicketStatus | string) {
   }
 }
 
+export function isTicketPendingPoints(ticket: {
+  status: string;
+  points_pending?: number | null;
+}) {
+  const isAwaitingConfirmation = [
+    "Issue Resolved",
+    "Awaiting Supervisor Approval",
+    "Awaiting Admin Approval",
+    "Reopened",
+  ].includes(ticket.status);
+  return isAwaitingConfirmation ? (ticket.points_pending ?? 0) : 0;
+}
+
 export function getTicketConfirmedPoints(ticket: {
   status: string;
   points_awarded?: number | null;
@@ -88,6 +101,9 @@ export function getTicketConfirmedPoints(ticket: {
   issue_type?: { base_points?: number | null } | null;
 }) {
   if (ticket.status !== "Closed" && ticket.status !== "Permanently Closed") return 0;
+  if (ticket.confirmed_points !== undefined && ticket.confirmed_points !== null) {
+    return Number(ticket.confirmed_points);
+  }
   const basePts = ticket.issue_type?.base_points || ticket.points_awarded || 20;
   // Star rating multiplier is eliminated; points are flat base points minus SLA penalty
   const slaPen = ticket.sla_breached ? 15 : 0;

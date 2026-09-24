@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Ticket, Profile, TicketStatus } from "@/types/database";
-import { getStatusBadgeColor, formatDate, getTicketConfirmedPoints } from "@/lib/utils";
+import { getStatusBadgeColor, formatDate, getTicketConfirmedPoints, isTicketPendingPoints } from "@/lib/utils";
 import { updateTicketStatusAction } from "./actions";
 import { toast } from "sonner";
 import {
@@ -53,8 +53,27 @@ export default function ResponderClient({
   const closedTasks = (tasks || []).filter((tk) => tk.status === "Closed" || tk.status === "Approved");
   const taskConfirmedPts = closedTasks.reduce((s, tk) => s + (tk.confirmed_points || 0), 0);
 
-  const pendingPts = tickets.reduce((s, t) => s + (t.points_pending ?? 0), 0);
-  const confirmedPts = tickets.reduce((s, t) => s + getTicketConfirmedPoints(t), 0) + taskConfirmedPts;
+  const pendingPts = tickets.reduce((s, t) => s + isTicketPendingPoints(t), 0);
+  const confirmedPtsAllTime = tickets.reduce((s, t) => s + getTicketConfirmedPoints(t), 0) + taskConfirmedPts;
+
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
+  const thisMonthTickets = tickets.filter((t) => {
+    if (t.status !== "Closed" && t.status !== "Permanently Closed") return false;
+    const d = t.closed_at ? new Date(t.closed_at) : (t.updated_at ? new Date(t.updated_at) : null);
+    if (!d) return false;
+    return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
+  });
+  const thisMonthTasks = closedTasks.filter((tk) => {
+    const d = tk.closed_at ? new Date(tk.closed_at) : (tk.updated_at ? new Date(tk.updated_at) : null);
+    if (!d) return false;
+    return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
+  });
+  const confirmedPtsThisMonth =
+    thisMonthTickets.reduce((s, t) => s + getTicketConfirmedPoints(t), 0) +
+    thisMonthTasks.reduce((s, tk) => s + (tk.confirmed_points || 0), 0);
 
   function handleOpenActionModal(ticket: Ticket, newStatus: TicketStatus) {
     setSelectedTicket(ticket);
@@ -134,21 +153,31 @@ export default function ResponderClient({
             <div className="text-sm font-extrabold text-white">Operational Tasks →</div>
           </Link>
 
-          <div className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-center min-w-[100px]">
+          <Link
+            href="/responder/performance"
+            className="bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl px-4 py-3 text-center min-w-[110px] transition-all"
+          >
             <div className="flex items-center justify-center gap-1.5 text-amber-300 mb-1">
               <Hourglass className="w-3.5 h-3.5" />
               <span className="text-[10px] font-semibold uppercase">Pending</span>
             </div>
             <div className="text-xl font-extrabold text-amber-300">{pendingPts} pts</div>
-          </div>
+            <p className="text-[9px] text-slate-300 mt-0.5">Awaiting Review</p>
+          </Link>
 
-          <div className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-center min-w-[100px]">
+          <Link
+            href="/responder/performance"
+            className="bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl px-4 py-3 text-center min-w-[120px] transition-all"
+          >
             <div className="flex items-center justify-center gap-1.5 text-emerald-300 mb-1">
               <BadgeCheck className="w-3.5 h-3.5" />
               <span className="text-[10px] font-semibold uppercase">Confirmed</span>
             </div>
-            <div className="text-xl font-extrabold text-emerald-300">{confirmedPts} pts</div>
-          </div>
+            <div className="text-xl font-extrabold text-emerald-300">{confirmedPtsAllTime} pts</div>
+            <p className="text-[9px] text-slate-300 mt-0.5">
+              All-Time ({confirmedPtsThisMonth} this mo)
+            </p>
+          </Link>
         </div>
       </div>
 

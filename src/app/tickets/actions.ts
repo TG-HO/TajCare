@@ -145,7 +145,7 @@ export async function createTicketAction(formData: FormData) {
       assigned_responder_id: assignedResponderId,
       sla_due_at: slaDueAt,
       points_awarded: basePoints,
-      points_pending: basePoints,
+      points_pending: 0,
       attachments,
     })
     .select()
@@ -299,7 +299,7 @@ export async function adminCreateTicketAction(formData: FormData) {
       assigned_responder_id: responderId || null,
       sla_due_at: slaDueAt,
       points_awarded: basePoints,
-      points_pending: basePoints,
+      points_pending: 0,
       attachments,
     })
     .select()
