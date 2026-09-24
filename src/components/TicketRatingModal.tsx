@@ -5,6 +5,7 @@ import { rateAndCloseTicketAction, reopenTicketAction } from "@/app/tickets/acti
 import { toast } from "sonner";
 import { Star, RotateCcw, X, Loader2, CheckCircle2 } from "lucide-react";
 import { Ticket } from "@/types/database";
+import { TICKET_POLICY } from "@/lib/config";
 
 export default function TicketRatingModal({
   ticket,
@@ -145,7 +146,7 @@ export default function TicketRatingModal({
               </p>
               {ticket.status === "Closed" && (
                 <p className="text-[11px] leading-relaxed font-semibold text-amber-800">
-                  ⚠️ Post-Closure: You are reopening within the 72-hour grace window. Any confirmed points will be reverted to Pending.
+                  ⚠️ Post-Closure: You are reopening within the {TICKET_POLICY.REOPEN_WINDOW_HOURS}-hour grace window. Any confirmed points will be reverted to Pending.
                 </p>
               )}
             </div>

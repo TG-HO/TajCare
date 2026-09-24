@@ -295,6 +295,16 @@ export default function SupervisedTicketsClient({
                         {ticket.location.name}
                       </span>
                     )}
+                    {(ticket.site_manager_rating || ticket.closure_rating) && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
+                        SM Rating: {ticket.site_manager_rating || ticket.closure_rating}★
+                      </span>
+                    )}
+                    {ticket.supervisor_rating && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-300">
+                        Supervisor Rating: {ticket.supervisor_rating}★
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">

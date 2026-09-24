@@ -142,7 +142,12 @@ export default async function LeaderboardPage({
       entry.confirmed_points += getTicketConfirmedPoints(t);
     }
 
-    if (t.status === "Issue Resolved" || t.status === "Reopened" || t.status === "Awaiting Admin Approval") {
+    if (
+      t.status === "Issue Resolved" ||
+      t.status === "Reopened" ||
+      t.status === "Awaiting Admin Approval" ||
+      t.status === "Awaiting Supervisor Approval"
+    ) {
       entry.pending_points += t.points_pending || 0;
     }
 

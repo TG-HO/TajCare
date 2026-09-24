@@ -40,7 +40,7 @@ export default async function AdminDashboardPage() {
       assigned_responder:profiles!assigned_responder_id(*),
       ticket_logs(*, actor:profiles(*))
     `)
-    .in("status", ["Awaiting Admin Approval", "Issue Resolved"])
+    .in("status", ["Awaiting Supervisor Approval", "Awaiting Admin Approval", "Issue Resolved"])
     .order("updated_at", { ascending: false });
 
   let pendingTicketsQuery = supabase

@@ -23,6 +23,7 @@ import {
   UserCheck,
   MessageSquarePlus,
   RefreshCw,
+  Star,
 } from "lucide-react";
 import AuditTimeline from "@/components/AuditTimeline";
 import ImageLightboxModal from "@/components/ImageLightboxModal";
@@ -31,9 +32,11 @@ import {
   reassignTicketAction,
   addTicketCommentAction,
 } from "@/app/admin/tickets/actions";
+import { supervisorRateAndCloseAction } from "@/app/tickets/actions";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { TICKET_POLICY } from "@/lib/config";
 
 interface TicketDetailDrawerProps {
   ticket: Ticket;
@@ -62,7 +65,8 @@ export default function TicketDetailDrawer({
   const [availableSupervisors, setAvailableSupervisors] = useState<Profile[]>(supervisors);
 
   // Action Modals State
-  const [activeModal, setActiveModal] = useState<"visit" | "reassign" | "comment" | null>(null);
+  const [activeModal, setActiveModal] = useState<"visit" | "reassign" | "comment" | "supervisor_rate" | null>(null);
+  const [supervisorRatingVal, setSupervisorRatingVal] = useState(5);
   const [targetStatus, setTargetStatus] = useState<TicketStatus>("Visit Date Scheduled");
   const [visitDate, setVisitDate] = useState(
     ticket.scheduled_visit_date
@@ -236,6 +240,41 @@ export default function TicketDetailDrawer({
     }
   }
 
+  const ratedAtTimestamp = ticket.site_manager_rated_at || ticket.closed_at || ticket.updated_at;
+  const hoursElapsed = ratedAtTimestamp
+    ? (Date.now() - new Date(ratedAtTimestamp).getTime()) / (1000 * 60 * 60)
+    : 999;
+  const isReopenWindowPassed = hoursElapsed >= TICKET_POLICY.REOPEN_WINDOW_HOURS;
+  const hoursRemaining = Math.max(0, TICKET_POLICY.REOPEN_WINDOW_HOURS - hoursElapsed);
+
+  async function handleSupervisorRateSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (userRole !== "supervisor") {
+      toast.error("Only Field Supervisors can rate and permanently close complaints (not even Admins).");
+      return;
+    }
+    if (!isReopenWindowPassed) {
+      toast.error(
+        `Reopening window is active (${Math.ceil(hoursRemaining)}h remaining). Rating unlocks once the ${TICKET_POLICY.REOPEN_WINDOW_HOURS}-hour window expires without being re-opened.`
+      );
+      return;
+    }
+
+    setSubmitting(true);
+    const res = await supervisorRateAndCloseAction(ticket.id, supervisorRatingVal, remarks);
+    setSubmitting(false);
+
+    if (res.error) {
+      toast.error(res.error);
+    } else {
+      toast.success(res.message);
+      setActiveModal(null);
+      await fetchFreshLogs();
+      router.refresh();
+      onClose();
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex justify-end">
       <div className="bg-white w-full max-w-xl h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
@@ -345,6 +384,33 @@ export default function TicketDetailDrawer({
                   <MessageSquarePlus className="w-3 h-3 text-slate-500" /> Comment
                 </button>
               )}
+
+              {/* Field Supervisor Permanent Close & Rate Action */}
+              {(ticket.status === "Awaiting Supervisor Approval" || ticket.status === "Awaiting Admin Approval") && (
+                userRole === "supervisor" ? (
+                  isReopenWindowPassed ? (
+                    <button
+                      onClick={() => {
+                        setActiveModal("supervisor_rate");
+                        setSupervisorRatingVal(5);
+                        setRemarks("");
+                      }}
+                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1"
+                    >
+                      <Star className="w-3 h-3 fill-white" /> Rate & Close Forever
+                    </button>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-semibold flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-amber-700" /> Reopen Window ({Math.ceil(hoursRemaining)}h left)
+                    </span>
+                  )
+                ) : (
+                  <span className="px-2 py-0.5 bg-slate-200/80 text-slate-600 rounded-lg text-[11px] font-semibold flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-slate-500" />
+                    {userRole === "admin" ? "Overview Only (Supervisor Only Action)" : "Overview Only"}
+                  </span>
+                )
+              )}
             </div>
           </div>
         )}
@@ -448,6 +514,96 @@ export default function TicketDetailDrawer({
                     </div>
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Separated Ratings Section: Site Manager & Field Supervisor */}
+          {(ticket.site_manager_rating || ticket.closure_rating || ticket.supervisor_rating || ticket.status === "Awaiting Supervisor Approval" || ticket.status === "Awaiting Admin Approval") && (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <h3 className="font-bold text-[#0F172A] uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" /> Quality & Service Evaluation
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Site Manager Rating */}
+                <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Site Manager Rating</span>
+                    {ticket.site_manager_rated_at && (
+                      <span className="text-[10px] text-slate-400">{formatDate(ticket.site_manager_rated_at)}</span>
+                    )}
+                  </div>
+                  {ticket.site_manager_rating || ticket.closure_rating ? (
+                    <div>
+                      <div className="flex items-center gap-1 text-amber-600 font-extrabold text-sm">
+                        <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                        <span>{ticket.site_manager_rating || ticket.closure_rating} / 5 Stars</span>
+                      </div>
+                      {(ticket.site_manager_remarks || ticket.closure_remarks) && (
+                        <p className="text-xs text-slate-600 italic mt-1 bg-slate-50 p-2 rounded border border-slate-100">
+                          &quot;{ticket.site_manager_remarks || ticket.closure_remarks}&quot;
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">Not rated by Site Manager yet</p>
+                  )}
+                </div>
+
+                {/* Field Supervisor Rating */}
+                <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-indigo-600">Field Supervisor Rating</span>
+                    {ticket.supervisor_rated_at && (
+                      <span className="text-[10px] text-slate-400">{formatDate(ticket.supervisor_rated_at)}</span>
+                    )}
+                  </div>
+                  {ticket.supervisor_rating ? (
+                    <div>
+                      <div className="flex items-center gap-1 text-indigo-700 font-extrabold text-sm">
+                        <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                        <span>{ticket.supervisor_rating} / 5 Stars (Permanently Closed)</span>
+                      </div>
+                      {ticket.supervisor_remarks && (
+                        <p className="text-xs text-slate-600 italic mt-1 bg-indigo-50/50 p-2 rounded border border-indigo-100">
+                          &quot;{ticket.supervisor_remarks}&quot;
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 pt-0.5">
+                      <p className="text-xs text-amber-700 font-medium flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        {!isReopenWindowPassed
+                          ? `Reopen window active (${Math.ceil(hoursRemaining)}h left) • Rating unlocks soon`
+                          : "Pending Field Supervisor Evaluation"}
+                      </p>
+                      {userRole === "supervisor" && !isClosed && (
+                        isReopenWindowPassed ? (
+                          <button
+                            onClick={() => {
+                              setActiveModal("supervisor_rate");
+                              setSupervisorRatingVal(5);
+                              setRemarks("");
+                            }}
+                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-sm transition-all flex items-center gap-1"
+                          >
+                            <Award className="w-3 h-3" /> Rate & Permanently Close
+                          </button>
+                        ) : (
+                          <button
+                            disabled
+                            title={`Rating unlocks after the ${TICKET_POLICY.REOPEN_WINDOW_HOURS}-hour reopening window passes without being re-opened (${Math.ceil(hoursRemaining)}h remaining).`}
+                            className="px-3 py-1 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg text-[11px] font-semibold cursor-not-allowed flex items-center gap-1"
+                          >
+                            <Clock className="w-3 h-3 text-slate-400" /> Unlocks in {Math.ceil(hoursRemaining)}h
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -708,6 +864,131 @@ export default function TicketDetailDrawer({
                 >
                   {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                   Post Comment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: Field Supervisor Rating & Permanent Closure Modal */}
+      {activeModal === "supervisor_rate" && (
+        <div className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="font-extrabold text-[#0F172A] text-sm flex items-center gap-2">
+                <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+                Field Supervisor Rating & Permanent Closure
+              </h3>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Site Manager Reference Card */}
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1 text-xs">
+              <span className="text-[10px] uppercase font-bold text-amber-800">
+                Site Manager Feedback Reference
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-amber-900">
+                  {ticket.site_manager_rating || ticket.closure_rating || 5} Stars
+                </span>
+                <span className="text-slate-600 italic">
+                  &quot;{ticket.site_manager_remarks || ticket.closure_remarks || "No remarks"}&quot;
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSupervisorRateSubmit} className="space-y-4 mt-4 text-xs">
+              <div>
+                <label className="block text-center font-bold text-slate-700 uppercase mb-2">
+                  Field Supervisor Evaluation Star Rating
+                </label>
+                <div className="flex items-center justify-center gap-2 py-1">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setSupervisorRatingVal(star)}
+                      className="p-1 focus:outline-none transition-transform hover:scale-110"
+                    >
+                      <Star
+                        className={`w-7 h-7 ${
+                          supervisorRatingVal >= star
+                            ? "fill-amber-400 text-amber-400"
+                            : "text-slate-300"
+                        }`}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <p className="text-center font-bold text-slate-600 mt-1">
+                  {supervisorRatingVal === 5 && "⭐ 5 Stars — Excellent Resolution"}
+                  {supervisorRatingVal === 4 && "👍 4 Stars — Good Support"}
+                  {supervisorRatingVal === 3 && "😐 3 Stars — Satisfactory"}
+                  {supervisorRatingVal === 2 && "👎 2 Stars — Needs Improvement"}
+                  {supervisorRatingVal === 1 && "⚠️ 1 Star — Unsatisfactory"}
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Field Supervisor Remarks
+                </label>
+                <textarea
+                  rows={3}
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  placeholder="Final quality audit and permanent closure notes..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-[#0F172A] focus:outline-none"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-slate-700">
+                <span className="text-[10px] uppercase font-bold text-slate-500">
+                  Points Crediting (Multiplier Eliminated)
+                </span>
+                <div className="flex items-center justify-between text-xs">
+                  <span>Base Points:</span>
+                  <span className="font-bold">+{ticket.issue_type?.base_points || ticket.points_pending || 20} pts</span>
+                </div>
+                {ticket.sla_breached && (
+                  <div className="flex items-center justify-between text-xs text-rose-600">
+                    <span>SLA Penalty:</span>
+                    <span className="font-bold">-15 pts</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-xs font-extrabold text-emerald-700 pt-1 border-t border-slate-200">
+                  <span>Confirmed Points:</span>
+                  <span>
+                    +{Math.max(
+                      0,
+                      (ticket.issue_type?.base_points || ticket.points_pending || 20) -
+                        (ticket.sla_breached ? 15 : 0)
+                    )} pts
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setActiveModal(null)}
+                  className="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Award className="w-3.5 h-3.5" />}
+                  Rate & Permanently Close
                 </button>
               </div>
             </form>

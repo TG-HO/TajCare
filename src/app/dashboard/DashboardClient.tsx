@@ -24,6 +24,7 @@ import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import RefreshButton from "@/components/RefreshButton";
 import { permanentlyCloseExpiredTicketsAction } from "@/app/tickets/actions";
 import TicketResponseTimer from "@/components/TicketResponseTimer";
+import { TICKET_POLICY } from "@/lib/config";
 
 export default function DashboardClient({
   profile,
@@ -38,13 +39,13 @@ export default function DashboardClient({
   const [drawerTicket, setDrawerTicket] = useState<Ticket | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
-  // On mount: auto-expire any Closed tickets that are past the 72h window
+  // On mount: auto-expire any Closed tickets that are past the reopen window
   useEffect(() => {
     const expiredIds = tickets
       .filter((t) => {
         if (t.status !== "Closed" || !t.closed_at) return false;
         const hoursElapsed = (Date.now() - new Date(t.closed_at).getTime()) / (1000 * 60 * 60);
-        return hoursElapsed > 72;
+        return hoursElapsed > TICKET_POLICY.REOPEN_WINDOW_HOURS;
       })
       .map((t) => t.id);
 
@@ -62,12 +63,12 @@ export default function DashboardClient({
 
   const displayList = activeTab === "active" ? activeTickets : completedTickets;
 
-  /** Reopen available on Issue Resolved (no time limit) OR Closed (within 72h of closed_at) */
+  /** Reopen available on Issue Resolved (no time limit) OR Closed (within reopen window of closed_at) */
   function canReopen(ticket: Ticket) {
     if (ticket.status === "Issue Resolved" || ticket.status === "Reopened") return true;
     if (ticket.status === "Closed" && ticket.closed_at) {
       const hoursElapsed = (Date.now() - new Date(ticket.closed_at).getTime()) / (1000 * 60 * 60);
-      return hoursElapsed <= 72;
+      return hoursElapsed <= TICKET_POLICY.REOPEN_WINDOW_HOURS;
     }
     return false;
   }
@@ -77,11 +78,11 @@ export default function DashboardClient({
     return ticket.status === "Issue Resolved";
   }
 
-  /** Remaining hours in the 72h reopen window for Closed tickets */
+  /** Remaining hours in the reopen window for Closed tickets */
   function getReopenWindowHours(ticket: Ticket): number | null {
     if (ticket.status === "Closed" && ticket.closed_at) {
       const hoursElapsed = (Date.now() - new Date(ticket.closed_at).getTime()) / (1000 * 60 * 60);
-      return Math.max(0, 72 - hoursElapsed);
+      return Math.max(0, TICKET_POLICY.REOPEN_WINDOW_HOURS - hoursElapsed);
     }
     return null;
   }
@@ -189,8 +190,24 @@ export default function DashboardClient({
                       {ticket.status === "Permanently Closed" && (
                         <Lock className="w-2.5 h-2.5 mr-1" />
                       )}
-                      {ticket.status}
+                      {ticket.status === "Awaiting Supervisor Approval" || ticket.status === "Awaiting Admin Approval"
+                        ? "Awaiting Field Supervisor"
+                        : ticket.status}
                     </span>
+
+                    {(ticket.site_manager_rating || ticket.closure_rating) && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
+                        <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+                        Your Rating: {ticket.site_manager_rating || ticket.closure_rating}★
+                      </span>
+                    )}
+
+                    {ticket.supervisor_rating && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-300">
+                        <BadgeCheck className="w-2.5 h-2.5 text-indigo-600" />
+                        Supervisor: {ticket.supervisor_rating}★
+                      </span>
+                    )}
 
                     {ticket.reopened_count && ticket.reopened_count > 0 ? (
                       <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">

@@ -66,6 +66,7 @@ export function getStatusBadgeColor(status: TicketStatus | string) {
     case "Issue Resolved":
       return "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold";
     case "Awaiting Admin Approval":
+    case "Awaiting Supervisor Approval":
       return "bg-purple-50 text-purple-700 border-purple-300 font-bold animate-pulse";
     case "Closed":
       return "bg-slate-100 text-slate-700 border-slate-300";
@@ -88,14 +89,7 @@ export function getTicketConfirmedPoints(ticket: {
 }) {
   if (ticket.status !== "Closed" && ticket.status !== "Permanently Closed") return 0;
   const basePts = ticket.issue_type?.base_points || ticket.points_awarded || 20;
-  const ratingMultipliers: Record<number, number> = {
-    5: 1.5,
-    4: 1.25,
-    3: 1.0,
-    2: 0.8,
-    1: 0.5,
-  };
-  const mult = ticket.closure_rating ? (ratingMultipliers[ticket.closure_rating] || 1.0) : 1.0;
+  // Star rating multiplier is eliminated; points are flat base points minus SLA penalty
   const slaPen = ticket.sla_breached ? 15 : 0;
-  return Math.max(0, Math.round(basePts * mult - slaPen));
+  return Math.max(0, Math.round(basePts - slaPen));
 }

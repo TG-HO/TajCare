@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { createNotification, createRoleNotifications } from "@/lib/notifications/service";
+import { TICKET_POLICY } from "@/lib/config";
 
 export async function createTicketAction(formData: FormData) {
   const rawIssueTypeId = (formData.get("issue_type_id") as string) || null;
@@ -350,7 +351,7 @@ export async function adminCreateTicketAction(formData: FormData) {
 }
 
 /**
- * Site Manager rates ticket -> status becomes "Awaiting Admin Approval"
+ * Site Manager rates ticket -> status becomes "Awaiting Supervisor Approval"
  */
 export async function submitRatingAction(ticketId: string, rating: number, remarks: string) {
   if (!rating || rating < 1 || rating > 5) {
@@ -381,19 +382,31 @@ export async function submitRatingAction(ticketId: string, rating: number, remar
   const result = rpcResult as { error?: string; success?: boolean };
   if (result?.error) return { error: result.error };
 
-  // Notify Admins that a rating is awaiting review and approval (triggers in-app + email)
+  // Notify Field Supervisors that a rating is awaiting review and permanent closure
   const { data: ticket } = await adminClient
     .from("tickets")
-    .select("ticket_number, assigned_responder_id")
+    .select("ticket_number, assigned_responder_id, assigned_responder:profiles!assigned_responder_id(supervisor_id)")
     .eq("id", ticketId)
     .single();
 
   if (ticket) {
+    const directSupId = (ticket.assigned_responder as any)?.supervisor_id;
+    if (directSupId) {
+      await createNotification({
+        userId: directSupId,
+        actorId: user.id,
+        title: `Rating Awaiting Supervisor Review: #${ticket.ticket_number}`,
+        message: `Complaint #${ticket.ticket_number} was rated ${rating}★ by Site Manager — awaiting your Field Supervisor review and permanent closure.`,
+        type: "rating",
+        referenceId: ticketId,
+      });
+    }
+
     await createRoleNotifications({
-      role: "admin",
+      role: "supervisor",
       actorId: user.id,
-      title: `Rating Awaiting Approval: #${ticket.ticket_number}`,
-      message: `Complaint #${ticket.ticket_number} was rated ${rating}★ by Site Manager — awaiting your review and points approval.`,
+      title: `Rating Awaiting Supervisor Review: #${ticket.ticket_number}`,
+      message: `Complaint #${ticket.ticket_number} was rated ${rating}★ by Site Manager — awaiting Field Supervisor review and permanent closure.`,
       type: "rating",
       referenceId: ticketId,
     });
@@ -401,18 +414,23 @@ export async function submitRatingAction(ticketId: string, rating: number, remar
 
   revalidatePath("/dashboard");
   revalidatePath("/admin");
+  revalidatePath("/admin/tickets");
+  revalidatePath("/admin/supervised");
   revalidatePath("/responder");
 
   return {
     success: true,
-    message: `Rating submitted! Complaint is now "Awaiting Admin Approval". Points will be confirmed after Admin review.`,
+    message: `Rating submitted! Complaint is now "Awaiting Supervisor Approval". Field Supervisor will review and close it permanently.`,
   };
 }
 
 /**
- * Admin approves or modifies rating -> ticket becomes "Closed" & points confirmed.
+ * Field Supervisor rates ticket -> ticket becomes "Permanently Closed" & flat points confirmed.
+ * STRICT ENFORCEMENT:
+ * - Only role 'supervisor' (Field Supervisor) can rate (NOT even Admin, Line Manager, or HOD).
+ * - Only unlocked after the reopening window (default 24h) has expired.
  */
-export async function adminApproveRatingAction(
+export async function supervisorRateAndCloseAction(
   ticketId: string,
   finalRating: number,
   remarks: string
@@ -430,12 +448,43 @@ export async function adminApproveRatingAction(
 
   const adminClient = createAdminClient();
 
+  // Role validation: ONLY supervisor (not even admin)
+  const { data: callerProfile } = await adminClient
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (callerProfile?.role !== "supervisor") {
+    return {
+      error: "Only Field Supervisors can rate and permanently close complaints (not even Admins, Line Managers, or HODs).",
+    };
+  }
+
+  // Verify ticket reopening window has expired
+  const { data: targetTicket } = await adminClient
+    .from("tickets")
+    .select("site_manager_rated_at, closed_at, updated_at, status")
+    .eq("id", ticketId)
+    .single();
+
+  const ratedAt = targetTicket?.site_manager_rated_at || targetTicket?.closed_at || targetTicket?.updated_at;
+  if (ratedAt) {
+    const hoursElapsed = (Date.now() - new Date(ratedAt).getTime()) / (1000 * 60 * 60);
+    if (hoursElapsed < TICKET_POLICY.REOPEN_WINDOW_HOURS) {
+      const hoursLeft = Math.ceil(TICKET_POLICY.REOPEN_WINDOW_HOURS - hoursElapsed);
+      return {
+        error: `Reopening window is still active (${hoursLeft}h remaining). Field Supervisor can only rate and permanently close this complaint after the ${TICKET_POLICY.REOPEN_WINDOW_HOURS}-hour reopening window has passed without re-opening.`,
+      };
+    }
+  }
+
   const { data: rpcResult, error: rpcError } = await adminClient.rpc(
-    "fn_admin_approve_rating",
+    "fn_supervisor_rate_and_close_ticket",
     {
       p_ticket_id: ticketId,
       p_actor_id: user.id,
-      p_final_rating: finalRating,
+      p_supervisor_rating: finalRating,
       p_remarks: remarks || "",
     }
   );
@@ -445,7 +494,7 @@ export async function adminApproveRatingAction(
   const result = rpcResult as { error?: string; success?: boolean; confirmed_points?: number };
   if (result?.error) return { error: result.error };
 
-  // Notify responder of confirmed points & notify complainant of official ticket closure (triggers in-app + email)
+  // Notify responder of confirmed points & notify complainant of permanent ticket closure
   const { data: ticket } = await adminClient
     .from("tickets")
     .select("ticket_number, assigned_responder_id, complainant_id")
@@ -457,8 +506,8 @@ export async function adminApproveRatingAction(
       await createNotification({
         userId: ticket.assigned_responder_id,
         actorId: user.id,
-        title: `Rating Approved & Points Confirmed`,
-        message: `Complaint #${ticket.ticket_number} rating approved (${finalRating}★). +${result?.confirmed_points || 0} confirmed points credited!`,
+        title: `Complaint Permanently Closed & Points Credited`,
+        message: `Complaint #${ticket.ticket_number} was permanently closed by Field Supervisor (${finalRating}★). +${result?.confirmed_points || 0} confirmed points credited!`,
         type: "points",
         referenceId: ticketId,
       });
@@ -468,8 +517,8 @@ export async function adminApproveRatingAction(
       await createNotification({
         userId: ticket.complainant_id,
         actorId: user.id,
-        title: `Complaint #${ticket.ticket_number} Officially Closed`,
-        message: `Your complaint #${ticket.ticket_number} has been officially approved and closed with a ${finalRating}★ rating.${remarks ? ` Remarks: ${remarks}` : ""}`,
+        title: `Complaint #${ticket.ticket_number} Permanently Closed`,
+        message: `Your complaint #${ticket.ticket_number} has been reviewed and permanently closed by Field Supervisor with a ${finalRating}★ rating.${remarks ? ` Remarks: ${remarks}` : ""}`,
         type: "ticket",
         referenceId: ticketId,
       });
@@ -478,6 +527,7 @@ export async function adminApproveRatingAction(
 
   revalidatePath("/admin");
   revalidatePath("/admin/tickets");
+  revalidatePath("/admin/supervised");
   revalidatePath("/dashboard");
   revalidatePath("/leaderboard");
   revalidatePath("/responder");
@@ -485,8 +535,19 @@ export async function adminApproveRatingAction(
 
   return {
     success: true,
-    message: `Rating approved! ${result?.confirmed_points || 0} points confirmed and credited to the responder.`,
+    message: `Complaint permanently closed! ${result?.confirmed_points || 0} points confirmed and credited to the responder.`,
   };
+}
+
+/**
+ * Backward compatibility alias
+ */
+export async function adminApproveRatingAction(
+  ticketId: string,
+  finalRating: number,
+  remarks: string
+) {
+  return supervisorRateAndCloseAction(ticketId, finalRating, remarks);
 }
 
 export async function rateAndCloseTicketAction(
@@ -513,31 +574,38 @@ export async function reopenTicketAction(ticketId: string, remarks: string) {
 
   const { data: ticket } = await adminClient
     .from("tickets")
-    .select("status, closed_at, reopened_count, ticket_number, assigned_responder_id")
+    .select("status, closed_at, site_manager_rated_at, reopened_count, ticket_number, assigned_responder_id")
     .eq("id", ticketId)
     .single();
 
   if (!ticket) return { error: "Ticket not found." };
 
-  if (
-    ticket.status !== "Issue Resolved" &&
-    ticket.status !== "Closed" &&
-    ticket.status !== "Awaiting Admin Approval"
-  ) {
+  if (ticket.status === "Permanently Closed") {
     return {
-      error: `Only tickets in "Issue Resolved", "Awaiting Admin Approval", or "Closed" status can be re-opened. Current status: ${ticket.status}`,
+      error: "This complaint was permanently closed by the Field Supervisor and cannot be re-opened.",
     };
   }
 
-  if (ticket.status === "Closed") {
-    if (!ticket.closed_at) {
-      return { error: "Closure timestamp missing. Cannot verify re-open window." };
-    }
-    const hoursElapsed = (Date.now() - new Date(ticket.closed_at).getTime()) / (1000 * 60 * 60);
-    if (hoursElapsed > 72) {
-      return {
-        error: "Re-open window has expired. Tickets can only be re-opened within 72 hours of closure.",
-      };
+  if (
+    ticket.status !== "Issue Resolved" &&
+    ticket.status !== "Closed" &&
+    ticket.status !== "Awaiting Admin Approval" &&
+    ticket.status !== "Awaiting Supervisor Approval"
+  ) {
+    return {
+      error: `Only tickets in "Issue Resolved", "Awaiting Supervisor Approval", or "Closed" status can be re-opened. Current status: ${ticket.status}`,
+    };
+  }
+
+  if (ticket.status === "Closed" || ticket.status === "Awaiting Supervisor Approval" || ticket.status === "Awaiting Admin Approval") {
+    const timestamp = ticket.closed_at || ticket.site_manager_rated_at;
+    if (timestamp) {
+      const hoursElapsed = (Date.now() - new Date(timestamp).getTime()) / (1000 * 60 * 60);
+      if (hoursElapsed > TICKET_POLICY.REOPEN_WINDOW_HOURS) {
+        return {
+          error: `Re-open window has expired. Tickets can only be re-opened within ${TICKET_POLICY.REOPEN_WINDOW_HOURS} hours of closure.`,
+        };
+      }
     }
   }
 

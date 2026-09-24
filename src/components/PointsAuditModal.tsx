@@ -13,19 +13,10 @@ export default function PointsAuditModal({
   onClose: () => void;
 }) {
   const basePoints = ticket?.issue_type?.base_points || transaction?.base_points || ticket?.points_awarded || 20;
-  const rating = ticket?.closure_rating || 5;
+  const rating = ticket?.supervisor_rating || ticket?.closure_rating || ticket?.site_manager_rating || 5;
   const slaBreached = ticket?.sla_breached || false;
 
-  const ratingMultipliers: Record<number, number> = {
-    5: 1.5,
-    4: 1.25,
-    3: 1.0,
-    2: 0.8,
-    1: 0.5,
-  };
-
-  const multiplier = transaction?.rating_multiplier || ratingMultipliers[rating] || 1.0;
-  const subtotal = Math.round(basePoints * multiplier);
+  const subtotal = basePoints;
   const slaPenalty = transaction?.sla_penalty ?? (slaBreached ? 15 : 0);
   const finalPoints = transaction?.final_points ?? Math.max(0, subtotal - slaPenalty);
 
@@ -58,7 +49,7 @@ export default function PointsAuditModal({
 
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <span className="text-slate-400">2. Star Rating Multiplier ({rating}★)</span>
-            <span className="font-bold text-amber-400">× {multiplier}x</span>
+            <span className="font-bold text-emerald-400">1.0x (Flat Points)</span>
           </div>
 
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -67,7 +58,7 @@ export default function PointsAuditModal({
           </div>
 
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <span className="text-slate-400">3. 24-Hour SLA Breach Penalty</span>
+            <span className="text-slate-400">3. SLA Breach Penalty</span>
             <span className={slaPenalty > 0 ? "font-bold text-rose-400" : "font-bold text-slate-500"}>
               -{slaPenalty} pts
             </span>
@@ -80,9 +71,9 @@ export default function PointsAuditModal({
         </div>
 
         <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px] text-indigo-900 leading-relaxed">
-          <p className="font-bold mb-0.5">ℹ️ Transparency Note:</p>
+          <p className="font-bold mb-0.5">ℹ️ Policy Note:</p>
           <p>
-            Example: A 35 base point ticket rated 4 Stars (1.25x) becomes <code>Math.round(35 × 1.25) = 44 points</code>.
+            Rating multipliers have been eliminated. Responders receive full base points for issue complexity minus any SLA penalty. Star ratings are tracked separately as direct service quality (CSAT) metrics.
           </p>
         </div>
 

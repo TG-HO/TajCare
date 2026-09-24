@@ -15,9 +15,11 @@ export type TicketStatus =
   | 'Visited'
   | 'Issue Resolved'
   | 'Awaiting Admin Approval'
+  | 'Awaiting Supervisor Approval'
   | 'Closed'
   | 'Reopened'
-  | 'Permanently Closed';
+  | 'Permanently Closed'
+  | 'Cancelled';
 
 export type TaskStatus =
   | 'Pending'
@@ -119,6 +121,12 @@ export interface Ticket {
   visit_remarks?: string | null;
   closure_rating?: number | null;
   closure_remarks?: string | null;
+  site_manager_rating?: number | null;
+  site_manager_remarks?: string | null;
+  site_manager_rated_at?: string | null;
+  supervisor_rating?: number | null;
+  supervisor_remarks?: string | null;
+  supervisor_rated_at?: string | null;
   points_awarded?: number;
   points_pending?: number;
   confirmed_points?: number;

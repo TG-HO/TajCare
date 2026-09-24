@@ -452,17 +452,9 @@ export async function adminCloseTaskAction(
 
   if (!task) return { error: "Task not found." };
 
-  const ratingMultipliers: Record<number, number> = {
-    5: 1.5,
-    4: 1.25,
-    3: 1.0,
-    2: 0.8,
-    1: 0.5,
-  };
-
-  const multiplier = ratingMultipliers[rating] || 1.0;
+  // Rating multiplier eliminated: Award flat base points
   const basePts = task.base_points || 30;
-  const finalConfirmedPoints = Math.max(0, Math.round(basePts * multiplier));
+  const finalConfirmedPoints = Math.max(0, basePts);
 
   // Update task to Closed
   const { error } = await adminClient
@@ -494,7 +486,7 @@ export async function adminCloseTaskAction(
       responder_id: respId,
       event_type: "TASK_CONFIRMED",
       base_points: basePts,
-      rating_multiplier: multiplier,
+      rating_multiplier: 1.0,
       sla_penalty: 0,
       final_points: finalConfirmedPoints,
       actor_id: user.id,

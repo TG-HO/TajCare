@@ -459,10 +459,21 @@ export default function MasterTicketsClient({
                             </div>
                           )}
 
-                          {t.closure_rating ? (
-                            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-600">
-                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                              <span>{t.closure_rating} / 5</span>
+                          {/* Separated Ratings Display */}
+                          {(t.site_manager_rating || t.closure_rating || t.supervisor_rating) ? (
+                            <div className="flex flex-col gap-0.5 text-[10px]">
+                              {(t.site_manager_rating || t.closure_rating) && (
+                                <div className="flex items-center gap-1 font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                  <span>SM: {t.site_manager_rating || t.closure_rating}★</span>
+                                </div>
+                              )}
+                              {t.supervisor_rating && (
+                                <div className="flex items-center gap-1 font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                  <ShieldCheck className="w-3 h-3 text-indigo-600" />
+                                  <span>Sup: {t.supervisor_rating}★</span>
+                                </div>
+                              )}
                             </div>
                           ) : null}
                         </div>

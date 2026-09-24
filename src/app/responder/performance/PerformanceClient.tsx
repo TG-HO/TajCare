@@ -237,16 +237,24 @@ export default function PerformanceClient({
                       <td className="p-3.5 font-bold text-[#0F172A]">#{t.ticket_number}</td>
                       <td className="p-3.5">{t.location?.name}</td>
                       <td className="p-3.5 font-semibold">{t.status}</td>
-                      <td className="p-3.5">
-                        {t.closure_rating ? (
-                          <span className="inline-flex items-center gap-1 text-amber-600 font-bold">
-                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                            {t.closure_rating} Stars
-                          </span>
+                        {t.site_manager_rating || t.closure_rating || t.supervisor_rating ? (
+                          <div className="flex flex-col gap-0.5 text-xs">
+                            {(t.site_manager_rating || t.closure_rating) && (
+                              <span className="inline-flex items-center gap-1 text-amber-700 font-bold">
+                                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                SM: {t.site_manager_rating || t.closure_rating}★
+                              </span>
+                            )}
+                            {t.supervisor_rating && (
+                              <span className="inline-flex items-center gap-1 text-indigo-700 font-bold">
+                                <Star className="w-3.5 h-3.5 fill-indigo-400 text-indigo-500" />
+                                Sup: {t.supervisor_rating}★
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-slate-400 italic">Unrated</span>
                         )}
-                      </td>
                       <td className="p-3.5">
                         {(t.points_pending ?? 0) > 0 ? (
                           <span className="inline-flex items-center gap-1 text-amber-700 font-bold">

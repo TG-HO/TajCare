@@ -167,6 +167,7 @@ export default function ResponderClient({
             <option value="Visit Date Scheduled">Visit Scheduled</option>
             <option value="Visited">Visited</option>
             <option value="Issue Resolved">Resolved (Awaiting SM)</option>
+            <option value="Awaiting Supervisor Approval">Awaiting Supervisor Approval</option>
             <option value="Awaiting Admin Approval">Awaiting Admin Approval</option>
             <option value="Reopened">Reopened</option>
             <option value="Closed">Closed</option>

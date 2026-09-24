@@ -19,12 +19,15 @@ import {
   Plus,
   RotateCw,
   BadgeCheck,
+  Lock,
+  ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import RefreshButton from "@/components/RefreshButton";
 import TicketResponseTimer from "@/components/TicketResponseTimer";
+import { TICKET_POLICY } from "@/lib/config";
 
 export default function AdminDashboardClient({
   totalUsers,
@@ -58,10 +61,25 @@ export default function AdminDashboardClient({
   const [remarks, setRemarks] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const isManagementOverviewRole = userRole === "line_manager" || userRole === "hod" || userRole === "admin";
+  const canRateAndClose = userRole === "supervisor";
+
   function handleOpenApproveModal(t: Ticket) {
+    if (userRole !== "supervisor") {
+      toast.error("Only Field Supervisors can rate and permanently close complaints (not even Admins).");
+      return;
+    }
+    const ratedAt = t.site_manager_rated_at || t.closed_at || t.updated_at;
+    const hoursElapsed = ratedAt ? (Date.now() - new Date(ratedAt).getTime()) / (1000 * 60 * 60) : 999;
+    if (hoursElapsed < TICKET_POLICY.REOPEN_WINDOW_HOURS) {
+      const hoursLeft = Math.ceil(TICKET_POLICY.REOPEN_WINDOW_HOURS - hoursElapsed);
+      toast.error(`Reopen window active (${hoursLeft}h remaining). Rating unlocks once the ${TICKET_POLICY.REOPEN_WINDOW_HOURS}-hour window expires without being re-opened.`);
+      return;
+    }
+
     setApprovingTicket(t);
-    setFinalRating(t.closure_rating || 5);
-    setRemarks(t.closure_remarks || "");
+    setFinalRating(t.supervisor_rating || t.site_manager_rating || t.closure_rating || 5);
+    setRemarks(t.supervisor_remarks || "");
   }
 
   async function handleApproveSubmit(e: React.FormEvent) {
@@ -208,27 +226,33 @@ export default function AdminDashboardClient({
         )}
       </div>
 
-      {/* Ratings Awaiting Admin Approval Management Section */}
+      {/* Ratings Awaiting Supervisor Approval Management Section */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div>
             <h2 className="font-extrabold text-[#0F172A] text-base flex items-center gap-2">
               <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-              Ratings Awaiting Admin Approval ({awaitingApprovalTickets.length})
+              {isManagementOverviewRole
+                ? `Complaints Awaiting Field Supervisor Rating (Overview Only) (${awaitingApprovalTickets.length})`
+                : userRole === "supervisor"
+                ? `Complaints Awaiting Field Supervisor Rating & Closure (${awaitingApprovalTickets.length})`
+                : `Complaints Awaiting Rating & Closure (${awaitingApprovalTickets.length})`}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Review Site Manager ratings, adjust stars if necessary, and approve to confirm points and publish CSAT scores.
+              {isManagementOverviewRole
+                ? "Line Managers and HODs have executive overview access. Only Field Supervisors (or Admins) can rate and permanently close complaints."
+                : "Review Site Manager feedback, provide Field Supervisor evaluation, and permanently close complaints with confirmed flat points."}
             </p>
           </div>
 
           <span className="text-xs font-bold px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl">
-            {awaitingApprovalTickets.length} Pending Approvals
+            {awaitingApprovalTickets.length} Pending
           </span>
         </div>
 
         {awaitingApprovalTickets.length === 0 ? (
           <div className="p-8 text-center text-slate-400 text-xs border border-slate-200 rounded-xl bg-slate-50">
-            No complaints currently awaiting rating approval.
+            No complaints currently awaiting rating review.
           </div>
         ) : (
           <div className="space-y-3">
@@ -237,32 +261,53 @@ export default function AdminDashboardClient({
               const title =
                 ticket.issue_type?.issue_title || ticket.custom_issue_title || "IT Support Ticket";
 
+              const ratedAt = ticket.site_manager_rated_at || ticket.closed_at || ticket.updated_at;
+              const hoursElapsed = ratedAt
+                ? (Date.now() - new Date(ratedAt).getTime()) / (1000 * 60 * 60)
+                : 999;
+              const isReopenWindowPassed = hoursElapsed >= TICKET_POLICY.REOPEN_WINDOW_HOURS;
+              const hoursRemaining = Math.max(0, TICKET_POLICY.REOPEN_WINDOW_HOURS - hoursElapsed);
+
               return (
                 <div
                   key={ticket.id}
                   className="bg-amber-50/40 border border-amber-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-extrabold text-[#0F172A]">
                         #{ticket.ticket_number}
                       </span>
                       <span className="px-2 py-0.5 text-[10px] uppercase font-bold bg-purple-100 text-purple-800 rounded border border-purple-200">
-                        Awaiting Admin Approval
+                        {ticket.status === "Awaiting Supervisor Approval"
+                          ? "Awaiting Supervisor Rating"
+                          : ticket.status}
                       </span>
-                      <span className="text-xs font-bold text-amber-700 flex items-center gap-1">
+                      <span className="text-xs font-bold text-amber-700 flex items-center gap-1 bg-amber-100/60 px-2 py-0.5 rounded border border-amber-200">
                         <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                        SM Rating: {ticket.closure_rating || 5} Stars
+                        SM Rating: {ticket.site_manager_rating || ticket.closure_rating || 5} Stars
                       </span>
+                      {ticket.supervisor_rating && (
+                        <span className="text-xs font-bold text-indigo-700 flex items-center gap-1 bg-indigo-100/60 px-2 py-0.5 rounded border border-indigo-200">
+                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                          Supervisor: {ticket.supervisor_rating} Stars
+                        </span>
+                      )}
+                      {!isReopenWindowPassed && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300">
+                          <Clock className="w-3 h-3 text-amber-700" />
+                          Reopen Window: {Math.ceil(hoursRemaining)}h left
+                        </span>
+                      )}
                     </div>
                     <h4 className="font-bold text-[#0F172A] text-sm">{title}</h4>
                     <p className="text-xs text-slate-600">
                       Responder: <strong>{responderName}</strong> • Site:{" "}
                       <strong>{ticket.location?.name}</strong>
                     </p>
-                    {ticket.closure_remarks && (
-                      <p className="text-xs italic text-slate-500 bg-white p-2 rounded border border-amber-100 mt-1">
-                        &quot;{ticket.closure_remarks}&quot;
+                    {(ticket.site_manager_remarks || ticket.closure_remarks) && (
+                      <p className="text-xs italic text-slate-600 bg-white p-2 rounded border border-amber-100 mt-1">
+                        Site Manager: &quot;{ticket.site_manager_remarks || ticket.closure_remarks}&quot;
                       </p>
                     )}
                   </div>
@@ -275,13 +320,32 @@ export default function AdminDashboardClient({
                       <Eye className="w-3.5 h-3.5" />
                       Timeline
                     </button>
-                    <button
-                      onClick={() => handleOpenApproveModal(ticket)}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow flex items-center gap-1.5"
-                    >
-                      <Award className="w-3.5 h-3.5" />
-                      Review & Approve Rating
-                    </button>
+                    {userRole === "supervisor" ? (
+                      isReopenWindowPassed ? (
+                        <button
+                          onClick={() => handleOpenApproveModal(ticket)}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow flex items-center gap-1.5"
+                        >
+                          <Award className="w-3.5 h-3.5" />
+                          Rate & Close Forever
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          title={`Rating unlocks after the ${TICKET_POLICY.REOPEN_WINDOW_HOURS}-hour reopening window passes without being re-opened (${Math.ceil(hoursRemaining)}h remaining).`}
+                          className="px-3.5 py-2 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-not-allowed"
+                        >
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          Unlocks in {Math.ceil(hoursRemaining)}h
+                        </button>
+                      )
+                    ) : (
+                      <span className="px-3 py-2 bg-slate-100 text-slate-500 border border-slate-200 text-xs font-semibold rounded-xl flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        {userRole === "admin" ? "Overview Only (Supervisor Action)" : "Overview Only"}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -394,17 +458,32 @@ export default function AdminDashboardClient({
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-[#0F172A] text-base flex items-center gap-2">
                 <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                Approve Rating: Ticket #{approvingTicket.ticket_number}
+                Field Supervisor Rating: #{approvingTicket.ticket_number}
               </h3>
               <button onClick={() => setApprovingTicket(null)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* Site Manager Reference Card */}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+              <span className="text-[10px] uppercase font-bold text-amber-800">
+                Site Manager Evaluation (Reference)
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-amber-900 text-xs">
+                  {approvingTicket.site_manager_rating || approvingTicket.closure_rating || 5} Stars
+                </span>
+                <span className="text-xs text-amber-800 italic">
+                  &quot;{approvingTicket.site_manager_remarks || approvingTicket.closure_remarks || "No feedback remarks"}&quot;
+                </span>
+              </div>
+            </div>
+
             <form onSubmit={handleApproveSubmit} className="space-y-4 text-xs">
               <div>
                 <label className="block text-center font-bold text-slate-700 uppercase mb-2">
-                  Review & Finalize Star Rating
+                  Field Supervisor Evaluation Star Rating
                 </label>
                 <div className="flex items-center justify-center gap-2 py-2">
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -427,25 +506,54 @@ export default function AdminDashboardClient({
                   ))}
                 </div>
                 <p className="text-center font-bold text-slate-600 mt-1">
-                  {finalRating === 5 && "⭐ 5 Stars (1.5x Multiplier)"}
-                  {finalRating === 4 && "👍 4 Stars (1.25x Multiplier)"}
-                  {finalRating === 3 && "😐 3 Stars (1.0x Multiplier)"}
-                  {finalRating === 2 && "👎 2 Stars (0.8x Multiplier)"}
-                  {finalRating === 1 && "⚠️ 1 Star (0.5x Multiplier)"}
+                  {finalRating === 5 && "⭐ 5 Stars — Excellent Resolution"}
+                  {finalRating === 4 && "👍 4 Stars — Good Support"}
+                  {finalRating === 3 && "😐 3 Stars — Satisfactory"}
+                  {finalRating === 2 && "👎 2 Stars — Needs Improvement"}
+                  {finalRating === 1 && "⚠️ 1 Star — Unsatisfactory"}
                 </p>
               </div>
 
               <div>
                 <label className="block font-bold text-slate-700 uppercase mb-1">
-                  Admin Approval Remarks
+                  Field Supervisor Closure Remarks
                 </label>
                 <textarea
                   rows={3}
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="Optional quality assurance notes..."
+                  placeholder="Final quality audit and permanent closure notes..."
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0F172A] focus:outline-none"
                 />
+              </div>
+
+              {/* Points calculation preview: flat points with multiplier eliminated */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-slate-700">
+                <span className="text-[10px] uppercase font-bold text-slate-500">
+                  Points Crediting (Multiplier Eliminated)
+                </span>
+                <div className="flex items-center justify-between text-xs">
+                  <span>Base Points (Complexity):</span>
+                  <span className="font-bold">
+                    +{approvingTicket.issue_type?.base_points || approvingTicket.points_pending || 20} pts
+                  </span>
+                </div>
+                {approvingTicket.sla_breached && (
+                  <div className="flex items-center justify-between text-xs text-rose-600">
+                    <span>SLA Breach Penalty:</span>
+                    <span className="font-bold">-15 pts</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-xs font-extrabold text-emerald-700 pt-1 border-t border-slate-200">
+                  <span>Confirmed Points:</span>
+                  <span>
+                    +{Math.max(
+                      0,
+                      (approvingTicket.issue_type?.base_points || approvingTicket.points_pending || 20) -
+                        (approvingTicket.sla_breached ? 15 : 0)
+                    )} pts
+                  </span>
+                </div>
               </div>
 
               <div className="pt-2 flex justify-end gap-3 border-t border-slate-100">
@@ -462,7 +570,7 @@ export default function AdminDashboardClient({
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Approve & Confirm Points
+                  Rate & Permanently Close
                 </button>
               </div>
             </form>
