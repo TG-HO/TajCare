@@ -36,7 +36,7 @@ export async function supervisorTakeoverOrVisitAction(
   // Verify caller's role
   const { data: callerProfile } = await adminClient
     .from("profiles")
-    .select("id, role, full_name")
+    .select("id, role, full_name, line_manager_id, hod_id")
     .eq("id", user.id)
     .single();
 
@@ -179,7 +179,7 @@ export async function supervisorTakeoverOrVisitAction(
     });
   }
 
-  // Notify complainant about supervisor status transition
+  // 1. Notify Site Manager about supervisor status transition
   if (ticket.complainant_id) {
     await createNotification({
       userId: ticket.complainant_id,
@@ -190,6 +190,27 @@ export async function supervisorTakeoverOrVisitAction(
       message: targetStatus === "Issue Resolved"
         ? `Your complaint #${ticket.ticket_number} has been marked as Issue Resolved by ${callerProfile?.full_name || "Supervisor"}. Please review and provide your rating / feedback to close it.${remarks ? ` Remarks: ${remarks}` : ""}`
         : `Your complaint #${ticket.ticket_number} has been updated to "${targetStatus}" by ${callerProfile?.full_name || "Supervisor"}.${remarks ? ` Remarks: ${remarks}` : ""}`,
+      type: "ticket",
+      referenceId: ticket.id,
+    });
+  }
+
+  // 2. Notify Level Above (Line Manager for Supervisor, HOD for Line Manager)
+  const levelAboveId =
+    callerProfile?.role === "supervisor"
+      ? callerProfile.line_manager_id
+      : callerProfile?.role === "line_manager"
+      ? callerProfile.hod_id
+      : null;
+
+  if (levelAboveId) {
+    await createNotification({
+      userId: levelAboveId,
+      actorId: user.id,
+      title: targetStatus === "Issue Resolved"
+        ? `Complaint #${ticket.ticket_number} Resolved by ${callerProfile?.role === "supervisor" ? "Supervisor" : "Line Manager"}`
+        : `Complaint #${ticket.ticket_number} Status: ${targetStatus}`,
+      message: `${callerProfile?.full_name} (${callerProfile?.role}) updated Complaint #${ticket.ticket_number} to "${targetStatus}".${remarks ? ` Remarks: ${remarks}` : ""}`,
       type: "ticket",
       referenceId: ticket.id,
     });
@@ -238,7 +259,7 @@ export async function reassignTicketAction(
   // 1. Verify caller profile
   const { data: callerProfile } = await adminClient
     .from("profiles")
-    .select("id, role, full_name")
+    .select("id, role, full_name, line_manager_id, hod_id")
     .eq("id", user.id)
     .single();
 
@@ -251,7 +272,7 @@ export async function reassignTicketAction(
   // 2. Verify target assignee
   const { data: targetProfile, error: targetError } = await adminClient
     .from("profiles")
-    .select("id, role, full_name, email")
+    .select("id, role, full_name, email, supervisor_id, line_manager_id")
     .eq("id", newAssigneeId)
     .single();
 
@@ -397,13 +418,39 @@ export async function reassignTicketAction(
     referenceId: ticket.id,
   });
 
-  // Notify complainant about reassignment
+  // 3. Notify Site / Complainant about reassignment
   if (ticket.complainant_id) {
     await createNotification({
       userId: ticket.complainant_id,
       actorId: user.id,
       title: `Complaint #${ticket.ticket_number} Reassigned`,
       message: `Your complaint #${ticket.ticket_number} has been reassigned to ${targetProfile.full_name}.`,
+      type: "ticket",
+      referenceId: ticket.id,
+    });
+  }
+
+  // 4. Notify Level Above (Supervisor for new IT Responder / Line Manager for new Supervisor)
+  let reassignLevelAboveId: string | null = null;
+  if (callerProfile?.role === "supervisor") {
+    reassignLevelAboveId = callerProfile.line_manager_id || targetProfile.supervisor_id;
+  } else if (targetProfile.role === "responder") {
+    reassignLevelAboveId = targetProfile.supervisor_id;
+  } else if (targetProfile.role === "supervisor") {
+    reassignLevelAboveId = targetProfile.line_manager_id;
+  }
+
+  if (
+    reassignLevelAboveId &&
+    reassignLevelAboveId !== user.id &&
+    reassignLevelAboveId !== newAssigneeId &&
+    reassignLevelAboveId !== prevHandlerId
+  ) {
+    await createNotification({
+      userId: reassignLevelAboveId,
+      actorId: user.id,
+      title: `Complaint #${ticket.ticket_number} Reassigned`,
+      message: `Complaint #${ticket.ticket_number} was reassigned from ${prevAssigneeName} to ${targetProfile.full_name} (${targetProfile.role}) by ${callerProfile?.full_name}. Reason: ${remarks}`,
       type: "ticket",
       referenceId: ticket.id,
     });

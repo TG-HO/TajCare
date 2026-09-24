@@ -28,6 +28,12 @@ export async function updateTicketStatusAction(
 
   const adminClient = createAdminClient();
 
+  const { data: responderProfile } = await adminClient
+    .from("profiles")
+    .select("id, full_name, supervisor_id")
+    .eq("id", user.id)
+    .single();
+
   const { data: ticket } = await adminClient
     .from("tickets")
     .select("ticket_number, complainant_id, status, scheduled_visit_date, sla_breached, location:locations(type), issue_type_id, points_pending")
@@ -77,13 +83,25 @@ export async function updateTicketStatusAction(
       return { error: result.error };
     }
 
-    // Notify complainant about resolution and prompt for rating / closure
+    // Notify Site Manager about resolution and prompt for rating / closure
     if (ticket.complainant_id) {
       await createNotification({
         userId: ticket.complainant_id,
         actorId: user.id,
         title: `Complaint #${ticket.ticket_number || ""} Marked as Issue Resolved`,
         message: `Your complaint #${ticket.ticket_number || ""} has been resolved by the IT Responder. Please review and provide your rating / feedback to close it.${remarks ? ` Remarks: ${remarks}` : ""}`,
+        type: "ticket",
+        referenceId: ticketId,
+      });
+    }
+
+    // Notify Level Above (Supervisor for IT Responder)
+    if (responderProfile?.supervisor_id) {
+      await createNotification({
+        userId: responderProfile.supervisor_id,
+        actorId: user.id,
+        title: `Complaint #${ticket.ticket_number || ""} Resolved by Responder`,
+        message: `IT Responder ${responderProfile.full_name || "Responder"} marked Complaint #${ticket.ticket_number || ""} as Issue Resolved.${remarks ? ` Remarks: ${remarks}` : ""}`,
         type: "ticket",
         referenceId: ticketId,
       });
@@ -143,13 +161,25 @@ export async function updateTicketStatusAction(
     visit_date: visitDate ? new Date(visitDate).toISOString() : null,
   });
 
-  // Notify complainant about status change
+  // 1. Notify Site Manager about status change
   if (ticket.complainant_id) {
     await createNotification({
       userId: ticket.complainant_id,
       actorId: user.id,
       title: `Complaint #${ticket.ticket_number || ""} Status: ${targetStatus}`,
       message: `Your complaint #${ticket.ticket_number || ""} has been updated to "${targetStatus}".${remarks ? ` Remarks: ${remarks}` : ""}`,
+      type: "ticket",
+      referenceId: ticketId,
+    });
+  }
+
+  // 2. Notify Level Above (Supervisor for IT Responder)
+  if (responderProfile?.supervisor_id) {
+    await createNotification({
+      userId: responderProfile.supervisor_id,
+      actorId: user.id,
+      title: `Complaint #${ticket.ticket_number || ""} Status: ${targetStatus}`,
+      message: `IT Responder ${responderProfile.full_name || "Responder"} updated Complaint #${ticket.ticket_number || ""} to "${targetStatus}".${remarks ? ` Remarks: ${remarks}` : ""}`,
       type: "ticket",
       referenceId: ticketId,
     });

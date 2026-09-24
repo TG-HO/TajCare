@@ -211,7 +211,7 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
 
       if (elapsedMinutes >= lineManagerStepMins) {
         targetLevel = 3;
-        targetRoleName = "HOD & Admin";
+        targetRoleName = "HOD";
 
         let hodId = responder?.hod_id;
         if (!hodId && responder?.line_manager_id) {
@@ -224,12 +224,11 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
         } else if (hods.length > 0) {
           recipientIds.push(...hods.map((h) => h.id));
         }
-        recipientIds.push(...admins.map((a) => a.id));
       }
     }
 
     if (targetLevel > currentLevel && recipientIds.length > 0) {
-      // Remove duplicates
+      // Remove duplicates - only target escalated role will receive notification & email
       const uniqueRecipients = Array.from(new Set(recipientIds));
 
       const formattedThreshold = formatDuration(currentThresholdMinutes);
@@ -245,9 +244,9 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
           ? `Responder ${responderName} has not responded to Ticket #${ticket.ticket_number} within ${formattedThreshold}. Action required by Supervisor.`
           : targetLevel === 2
           ? `Ticket #${ticket.ticket_number} remains unresponded after ${formattedThreshold}. Escalated to Line Manager for intervention.`
-          : `CRITICAL: Ticket #${ticket.ticket_number} has exceeded ${formattedThreshold} without responder activity. Escalated to HOD & System Admin.`;
+          : `CRITICAL: Ticket #${ticket.ticket_number} has exceeded ${formattedThreshold} without responder activity. Escalated to HOD.`;
 
-      // 1. Send in-app notifications and outbound emails to target recipients
+      // 1. Send in-app notifications and outbound emails ONLY to the escalated recipient role (L1: Supervisor Only, L2: Line Manager Only, L3: HOD Only)
       for (const recId of uniqueRecipients) {
         let emailSent = false;
         let recProfile = adminProfiles?.find((p) => p.id === recId);
@@ -287,55 +286,6 @@ export async function checkAndProcessEscalations(): Promise<EscalationResult> {
           type: "ticket",
           referenceId: ticket.id,
           skipEmail: emailSent, // If rich escalation email sent, skip generic email; otherwise fallback and send email!
-        });
-      }
-
-      // Also notify previous handler (responder / supervisor) that ticket has escalated past them
-      if (ticket.assigned_responder_id && !uniqueRecipients.includes(ticket.assigned_responder_id)) {
-        let responderMailSent = false;
-        if (responder?.email) {
-          try {
-            const rRes = await sendEscalationEmail({
-              ticket: ticket as any,
-              recipient: {
-                id: responder.id,
-                full_name: responder.full_name,
-                email: responder.email,
-                role: "responder",
-              },
-              level: targetLevel,
-              targetRole: `${targetRoleName} (FYI - Escalated Past Responder)`,
-              thresholdDuration: formattedThreshold,
-            });
-            if (rRes.success) {
-              responderMailSent = true;
-            } else {
-              console.error(`[Escalation Mailer] Delivery failed for responder ${responder.email}:`, rRes.error);
-            }
-          } catch (mailErr) {
-            console.error(`[Escalation Mailer] Error notifying responder:`, mailErr);
-          }
-        }
-
-        await createNotification({
-          userId: ticket.assigned_responder_id,
-          actorId: ticket.assigned_responder_id || ticket.complainant_id,
-          title: `⚠️ Ticket #${ticket.ticket_number} Escalated to ${targetRoleName}`,
-          message: `Ticket #${ticket.ticket_number} has exceeded the response threshold of ${formattedThreshold} and has been escalated to ${targetRoleName}.`,
-          type: "ticket",
-          referenceId: ticket.id,
-          skipEmail: responderMailSent,
-        });
-      }
-
-      if (targetLevel >= 2 && responder?.supervisor_id && !uniqueRecipients.includes(responder.supervisor_id)) {
-        await createNotification({
-          userId: responder.supervisor_id,
-          actorId: ticket.assigned_responder_id || ticket.complainant_id,
-          title: `🚨 Ticket #${ticket.ticket_number} Escalated to ${targetRoleName}`,
-          message: `Ticket #${ticket.ticket_number} has escalated past Supervisor level to ${targetRoleName} due to inaction.`,
-          type: "ticket",
-          referenceId: ticket.id,
         });
       }
 
